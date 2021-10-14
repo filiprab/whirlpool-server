@@ -114,7 +114,7 @@ public class HealthService {
       ServerApi serverApi = new ServerApi(serverUrl, httpClientService);
       whirlpoolClientConfig =
           new WhirlpoolClientConfig(
-              httpClientService, stompClientService, serverApi, null, params, mobile);
+              httpClientService, stompClientService, null, serverApi, null, params, mobile);
     }
     return whirlpoolClientConfig;
   }
