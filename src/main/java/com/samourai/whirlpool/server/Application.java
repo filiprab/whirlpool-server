@@ -1,17 +1,16 @@
 package com.samourai.whirlpool.server;
 
+import com.samourai.http.client.HttpUsage;
+import com.samourai.http.client.JavaHttpClient;
 import com.samourai.javaserver.config.ServerConfig;
 import com.samourai.javaserver.run.ServerApplication;
 import com.samourai.javaserver.utils.LogbackUtils;
 import com.samourai.javaserver.utils.ServerUtils;
-import com.samourai.whirlpool.server.beans.export.ActivityCsv;
 import com.samourai.whirlpool.server.config.WhirlpoolServerConfig;
-import com.samourai.whirlpool.server.services.ExportService;
-import com.samourai.whirlpool.server.services.rpc.RpcClientService;
+import com.samourai.whirlpool.server.services.DbService;
+import com.samourai.whirlpool.server.services.FixMixOutputService;
+import com.samourai.whirlpool.server.services.JavaHttpClientService;
 import com.samourai.whirlpool.server.utils.Utils;
-import com.samourai.xmanager.client.XManagerClient;
-import com.samourai.xmanager.protocol.XManagerService;
-import com.samourai.xmanager.protocol.rest.AddressIndexResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -27,13 +26,11 @@ public class Application extends ServerApplication {
 
   @Autowired private ServerUtils serverUtils;
 
-  @Autowired private RpcClientService rpcClientService;
-
-  @Autowired private ExportService exportService;
-
   @Autowired private WhirlpoolServerConfig serverConfig;
 
-  @Autowired private XManagerClient xManagerClient;
+  @Autowired private JavaHttpClientService httpClientService;
+
+  @Autowired private DbService dbService;
 
   public static void main(String[] args) {
     SpringApplication.run(Application.class, args);
@@ -41,21 +38,9 @@ public class Application extends ServerApplication {
 
   @Override
   public void runServer() throws Exception {
-    // check RPC connectivity
-    if (!rpcClientService.testConnectivity()) {
-      throw new Exception("RPC connexion failed");
-    }
-
-    // check XM connectivity
-    AddressIndexResponse addressIndexResponse =
-        xManagerClient.getAddressIndexOrDefault(XManagerService.WHIRLPOOL);
-    log.info("XM index: " + addressIndexResponse.index);
-
-    // log activity
-    ActivityCsv activityCsv = new ActivityCsv("STARTUP", null, null, null, null, null);
-    exportService.exportActivity(activityCsv);
-
     // server starting...
+    JavaHttpClient httpClient = new JavaHttpClient(10000, null, HttpUsage.BACKEND);
+    new FixMixOutputService(httpClient, dbService).run();
   }
 
   @Override

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DbService {
@@ -22,6 +23,7 @@ public class DbService {
   private MixRepository mixRepository;
   private Tx0WhitelistRepository tx0WhitelistRepository;
   private MixOutputRepository mixOutputRepository;
+  private MixOutputProcessedRepository mixOutputProcessedRepository;
   private MixTxidRepository mixTxidRepository;
   private MixStats mixStats; // cached value
   private BlameRepository blameRepository;
@@ -31,12 +33,14 @@ public class DbService {
       MixRepository mixRepository,
       Tx0WhitelistRepository tx0WhitelistRepository,
       MixOutputRepository mixOutputRepository,
+      MixOutputProcessedRepository mixOutputProcessedRepository,
       MixTxidRepository mixTxidRepository,
       BlameRepository blameRepository,
       BanRepository banRepository) {
     this.mixRepository = mixRepository;
     this.tx0WhitelistRepository = tx0WhitelistRepository;
     this.mixOutputRepository = mixOutputRepository;
+    this.mixOutputProcessedRepository = mixOutputProcessedRepository;
     this.mixTxidRepository = mixTxidRepository;
     this.blameRepository = blameRepository;
     this.banRepository = banRepository;
@@ -81,11 +85,35 @@ public class DbService {
     return mixOutputRepository.findByAddress(receiveAddress).isPresent();
   }
 
+  @Transactional
   public void deleteMixOutput(String receiveAddress) {
     mixOutputRepository.deleteByAddress(receiveAddress);
     if (log.isDebugEnabled()) {
       log.debug("deleteMixOutput: " + receiveAddress);
     }
+  }
+
+  public long countMixOutputs() {
+    return mixOutputRepository.count();
+  }
+
+  public Iterable<MixOutputTO> getMixOutputs() {
+    return mixOutputRepository.findAllByOrderByCreatedDesc();
+  }
+
+  // output processed
+
+  public void saveMixOutputProcessed(String outputAddress) {
+    MixOutputProcessedTO mixOutputTO = new MixOutputProcessedTO(outputAddress);
+    mixOutputProcessedRepository.save(mixOutputTO);
+  }
+
+  public boolean hasMixOutputProcessed(String receiveAddress) {
+    return mixOutputProcessedRepository.findByAddress(receiveAddress).isPresent();
+  }
+
+  public long countMixOutputsProcessed() {
+    return mixOutputProcessedRepository.count();
   }
 
   // txid
