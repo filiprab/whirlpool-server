@@ -81,6 +81,13 @@ public class DbService {
     return mixOutputRepository.findByAddress(receiveAddress).isPresent();
   }
 
+  public void deleteMixOutput(String receiveAddress) {
+    mixOutputRepository.deleteByAddress(receiveAddress);
+    if (log.isDebugEnabled()) {
+      log.debug("deleteMixOutput: " + receiveAddress);
+    }
+  }
+
   // txid
 
   public void saveMixTxid(String txid, long denomination) {
