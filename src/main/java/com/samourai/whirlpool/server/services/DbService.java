@@ -25,9 +25,10 @@ public class DbService {
   private Tx0WhitelistRepository tx0WhitelistRepository;
   private MixOutputRepository mixOutputRepository;
   private MixTxidRepository mixTxidRepository;
-  private MixStats mixStats; // cached value
   private BlameRepository blameRepository;
   private BanRepository banRepository;
+
+  private MixStats mixStats; // cached value
 
   public DbService(
       MixRepository mixRepository,

@@ -1,10 +1,8 @@
-graph LR
-client((client)) -.->|hardcoded url| coordinator(coordinator)
-client -->|REST| coordinator
-client -->|websocket| coordinator
+flowchart LR
+client((client)) -.->|hardcoded url| whirl.mx
 
 
-subgraph pool.whirl.mx
+subgraph whirl.mx
     coordinator -.- mysql[(mysql)]
     coordinator -.- bitcoind[bitcoind]
 end
