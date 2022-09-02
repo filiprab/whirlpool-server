@@ -1,10 +1,11 @@
-# DECENTRALIZING WHIRLPOOL COORDINATOR
+# DECENTRALIZING SAMOURAI
 
 
 ## I. Current architecture
+- URLs are hardcoded into Java librairies
+- single server per service
 ![](charts/current-architecture-global.png)
 
-- URLs are hardcoded into Java librairies
 
 
 ## II. Decentralizing Whirlpool
