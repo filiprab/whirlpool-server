@@ -24,6 +24,7 @@
 - need to implement Soroban + INVITE_INPUT on client side for each partner
 - how to quickly detect client disconnection?
 - how to quickly detect coordinator invitation?
+- how to notify coordinator instances about new client connexion
 - security: use coordinator signature to prevent malicious coordinator inviting liquidities
 - privacy: should we make mempool private on Soroban?
 
