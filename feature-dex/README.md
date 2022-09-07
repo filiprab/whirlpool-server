@@ -30,7 +30,8 @@ See [README-whirlpool.md](README-whirlpool.md)
 
 
 ## III. Decentralizing Soroban
-TODO
+- seed nodes list discovery
+- connect to random node for privacy
 
 
 ## IV. Decentralizing Samourai backend

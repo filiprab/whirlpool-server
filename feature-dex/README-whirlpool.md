@@ -1,7 +1,7 @@
 # DECENTRALIZING WHIRLPOOL
 
 
-## I. Proposal #1
+## I. Proposal #1: mempool on Soroban
 
 ### 1. Client registers  to Soroban
 - hardcoded bootstrap Soroban nodes on client side
@@ -26,7 +26,7 @@
 - privacy: make utxos list private on Soroban?
 
 
-## II. Proposal #2
+## II. Proposal #2: mempool splitted by mixing pool on responsible coordinator instances
 ### 1. Client connects as usual to random coordinator instance
 - hardcoded bootstrap coordinator nodes on client side
 - client connects to a random coordinator instance from the bootstrap list
