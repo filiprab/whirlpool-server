@@ -22,8 +22,10 @@
 
 ### 3. TL;DR
 - need to implement Soroban + INVITE_INPUT on client side for each partner
-- slow to detect client disconnection?
-- privacy: make utxos list private on Soroban?
+- how to quickly detect client disconnection?
+- how to quickly detect coordinator invitation?
+- security: use coordinator signature to prevent malicious coordinator inviting liquidities
+- privacy: should we make mempool private on Soroban?
 
 
 ## II. Proposal #2: mempool splitted by mixing pool on responsible coordinator instances
