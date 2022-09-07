@@ -10,9 +10,9 @@
 
 
 ### 2. Current Whirlpool architecture
-- 1 coordinator instance
-    * using a MySQL server (to store banned clients, mix history, postmix address reuse...)
-    * using a bitcoin node
+- 1 coordinator instance connected to:
+    * MySQL server (to store banned clients, mix history, postmix address reuse...)
+    * bitcoin node
 - coordinator URL is hardcoded into client: `pool.whirl.mx`
 
 ![](charts/current-architecture.png)
@@ -23,13 +23,6 @@ Main issues:
 - DDOS: single coordinator is an easy target
 - scaling: coordinator is handling growing whirlpool traffic (900+ websocket connexions)
 - mixing downtimes during coordinator upgrades
-
-Constraints for upgrading current architecture:
-- coordinator side:
-    * coordinator requires a centralized MYSQL database (for storing mix history, banned users, postmix address-reuse...)
-- client side: 
-    * keep changes as small as possible for client to make upgrade easier for whirlpool partners
-    * keep current mixing protocol unchanged
 
 
 ## II. Decentralizing Whirlpool
