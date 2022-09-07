@@ -22,7 +22,7 @@
 
 ### 3. TL;DR
 - need to implement Soroban + INVITE_INPUT on client side for each partner
-- slow to detect client disconnection
+- slow to detect client disconnection?
 - privacy: make utxos list private on Soroban?
 
 
@@ -44,6 +44,7 @@
 - no need to implement Soroban on client side
 - no protocol upgrade (except instance redirection response)
 - need of coordinator synchronization (mysql, soroban, other?)
+
 
 ## III. Coordinator decentralization
 
@@ -74,9 +75,19 @@
 ![](charts/proposal-sync-single.png)
 
 
-
-
 ### 3. TL;DR
 - one responsible coordinator per mixing pool
 - coordinator instances are synchronized in real-time (with shared MySQL database?)
 
+
+## IV. Proposal
+
+1. Start with proposal#1:
+    * quickly test & debug decentralized coordinator
+    * minor client development required
+    * in same time, TsubaDev works on Soroban DEX
+    * with shared MySQL database
+2. Upgrade to proposal#2:
+    * when Soroban DEX is ready
+    * backward compatible with proposal#1 ?
+3. Get rid of MySQL database
