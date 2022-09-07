@@ -73,10 +73,10 @@
 - if only one instance up, it's managing every pools:
 ![](charts/proposal-sync-single.png)
 
-- synchronization is in real time by using the shared MySQL database
 
 
 
 ### 3. TL;DR
-- coordinator instances are synchronized in real-time with the shared MySQL database
+- one responsible coordinator per mixing pool
+- coordinator instances are synchronized in real-time (with shared MySQL database?)
 
