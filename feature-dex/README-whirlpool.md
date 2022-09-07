@@ -1,32 +1,53 @@
-# DECENTRALIZING WHIRLPOOL COORDINATOR
+# DECENTRALIZING WHIRLPOOL
 
 
-## I. Current architecture
-- 1 coordinator instance
-    * using a MySQL server (to store banned clients, mix history, postmix address reuse...)
-    * using a bitcoin node
-- coordinator URL is hardcoded into client: `pool.whirl.mx`
+## I. Proposal #1
 
-![](charts/current-architecture.png)
+### 1. Client registers  to Soroban
+- hardcoded bootstrap Soroban nodes on client side
+- client connects to a random node
+- client registers UTXO to mix on soroban  
+    `REGISTER_INPUT {poolId, utxoHash, utxoIndex, signature, liquidity}`
+![](charts/proposal1-client-soroban.png)
 
 
-Main issues:
-- censorship: slow to recover if pool.whirl.mx were blacklisted (would require updating all clients with new hardcoded address)
-- DDOS: single coordinator is an easy target
-- scaling: coordinator is handling growing whirlpool traffic (900+ websocket connexions)
-- mixing downtimes during coordinator upgrades
+### 2. Coordinator invites client for mixing
+- coordinator instance lists registered inputs from Soroban  
+    `LIST_INPUTS {poolId}`
+- coordinator instance invites utxos to mix  
+    `INVITE_INPUT {poolId, instanceIp}`
+- client starts mixing with coordinator instance as usual
+![](charts/proposal1-invite.png)
 
-Constraints for upgrading current architecture:
-- coordinator side:
-    * coordinator requires a centralized MYSQL database (for storing mix history, banned users, postmix address-reuse...)
-- client side: 
-    * keep changes as small as possible for client to make upgrade easier for whirlpool partners
-    * keep current mixing protocol unchanged
 
-    
-## II. Proposal
+### 3. TL;DR
+- need to implement Soroban + INVITE_INPUT on client side for each partner
+- slow to detect client disconnection
+- privacy: make utxos list private on Soroban?
 
-### 1. Coordinator side
+
+## II. Proposal #2
+### 1. Client connects as usual to random coordinator instance
+- hardcoded bootstrap coordinator nodes on client side
+- client connects to a random coordinator instance from the bootstrap list
+![](charts/proposal-client-connect.png)
+
+### 2. Coordinator instance redirects to appropriate instance
+- each coordinator instance is responsible of one mixing pool
+- if the random instance is not responsible of client's mixing pool, client gets redirected to the responsible instance
+- client connects to this instance and starts mixing as usual
+
+![](charts/proposal-client-redirect-simple.png)
+
+
+### 3. TL;DR
+- no need to implement Soroban on client side
+- no protocol upgrade (except instance redirection response)
+- need of coordinator synchronization (mysql, soroban, other?)
+
+## III. Coordinator decentralization
+
+### 1. Instances
 - spawn multiple coordinator instances (same config)
 - each intance has its own url clearnet + onion
 - each instance is connected to a shared mysql database:
@@ -34,7 +55,6 @@ Constraints for upgrading current architecture:
     * postmix address reuse protection across all instances
     * "status dashboard" shows all instances activity. The dashboard is accessible from any instance.
 ![](charts/proposal-coordinators.png)
-
 
 
 ### 2. Pools repartition
@@ -56,20 +76,7 @@ Constraints for upgrading current architecture:
 - synchronization is in real time by using the shared MySQL database
 
 
-### 3. Client side
-- client has an hardcoded bootstrap node list locally
-- client connects to a random instance from the bootstrap list
-![](charts/proposal-client-connect.png)
 
-- if the random instance is not responsible of client's mixing pool, client gets redirected to the responsible instance
-- client connects to this instance and starts mixing as usual
-
-![](charts/proposal-client-redirect-simple.png)
-
-
-### 4. Remarks
-- decentralization is 100% transparent to the client
-- no protocol upgrade (except instance redirection response)
+### 3. TL;DR
 - coordinator instances are synchronized in real-time with the shared MySQL database
-- no need to implement Soroban client for mixing
 
