@@ -1,7 +1,8 @@
 package com.samourai.whirlpool.server.utils;
 
 import com.samourai.whirlpool.client.WhirlpoolClient;
-import com.samourai.whirlpool.protocol.websocket.notifications.MixStatus;
+import com.samourai.whirlpool.client.mix.listener.MixFailReason;
+import com.samourai.whirlpool.server.beans.MixStatus;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -32,12 +33,14 @@ public class MultiClientManager {
   public void stop() {
     for (WhirlpoolClient whirlpoolClient : clients) {
       if (whirlpoolClient != null) {
-        whirlpoolClient.stop(false);
+        whirlpoolClient.stop(MixFailReason.STOP_MIXING);
       }
     }
   }
 
-  /** @return true when success, false when failed */
+  /**
+   * @return true when success, false when failed
+   */
   public synchronized boolean waitDone(int nbSuccessExpected) {
     do {
       if (isDone(nbSuccessExpected)) {
@@ -56,7 +59,9 @@ public class MultiClientManager {
     } while (true);
   }
 
-  /** @return true when success, false when failed */
+  /**
+   * @return true when success, false when failed
+   */
   public synchronized boolean waitDone() {
     return waitDone(clients.size());
   }
@@ -96,7 +101,9 @@ public class MultiClientManager {
     return listeners.get(i);
   }
 
-  /** @return number of success clients, or null=1 client failed */
+  /**
+   * @return number of success clients, or null=1 client failed
+   */
   public Integer getNbSuccess() {
     if (clients.isEmpty()) {
       return 0;

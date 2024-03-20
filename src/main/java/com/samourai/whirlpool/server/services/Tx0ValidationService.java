@@ -6,6 +6,7 @@ import com.samourai.wallet.hd.HD_WalletFactoryGeneric;
 import com.samourai.wallet.segwit.bech32.Bech32UtilGeneric;
 import com.samourai.wallet.util.Callback;
 import com.samourai.wallet.util.TxUtil;
+import com.samourai.wallet.xmanagerClient.XManagerClient;
 import com.samourai.whirlpool.server.beans.Partner;
 import com.samourai.whirlpool.server.beans.Pool;
 import com.samourai.whirlpool.server.beans.PoolFee;
@@ -16,7 +17,6 @@ import com.samourai.whirlpool.server.config.WhirlpoolServerConfig.SecretWalletCo
 import com.samourai.whirlpool.server.services.fee.WhirlpoolFeeData;
 import com.samourai.whirlpool.server.services.fee.WhirlpoolFeeOutput;
 import com.samourai.whirlpool.server.utils.Utils;
-import com.samourai.xmanager.client.XManagerClient;
 import com.samourai.xmanager.protocol.XManagerService;
 import java.lang.invoke.MethodHandles;
 import java.util.Optional;
@@ -107,7 +107,7 @@ public class Tx0ValidationService {
 
   public String getFeePaymentCode(boolean opReturnV0) {
     BIP47Account ba = opReturnV0 ? secretAccountBip47V0 : secretAccountBip47;
-    return ba.getPaymentCode();
+    return ba.getPaymentCode().toString();
   }
 
   public Tx0Validation parseAndValidate(byte[] txBytes, long tx0Time, Pool pool) throws Exception {
@@ -144,23 +144,25 @@ public class Tx0ValidationService {
     if (feeData == null) {
       throw new Exception("feeData is null");
     }
+
+    // find partner
+    Partner partner = partnerService.getByPayload(feeData.getPartnerPayload());
+    XManagerService xmService = partner.getXmService();
+
     // validate feePayload
     WhirlpoolServerConfig.ScodeSamouraiFeeConfig scodeConfig =
         validateScodePayload(feeData.getScodePayload(), tx0Time);
     int feePercent = (scodeConfig != null ? scodeConfig.getFeeValuePercent() : 100);
     if (feePercent == 0) {
       // valid - no fee
-      return new Tx0Validation(tx0, feeData, poolFee, scodeConfig, feePercent, null);
+      return new Tx0Validation(tx0, feeData, poolFee, scodeConfig, feePercent, null, partner);
     }
-    // find partner
-    Partner partner = partnerService.getByPayload(feeData.getPartnerPayload());
-    XManagerService xmService = partner.getXmService();
 
     // validate for feeIndice with feePercent
     TransactionOutput feeOutput =
         findValidFeeOutput(tx0, tx0Time, feeData.getFeeIndice(), poolFee, feePercent, xmService);
     return new Tx0Validation(
-        tx0, feeData, poolFee, scodeConfig, feePercent, feeOutput); // valid - fee paid
+        tx0, feeData, poolFee, scodeConfig, feePercent, feeOutput, partner); // valid - fee paid
   }
 
   protected TransactionOutput findValidFeeOutput(

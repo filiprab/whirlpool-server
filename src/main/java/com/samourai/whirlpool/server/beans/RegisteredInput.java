@@ -1,30 +1,39 @@
 package com.samourai.whirlpool.server.beans;
 
 import com.samourai.whirlpool.server.beans.rpc.TxOutPoint;
+import org.apache.commons.lang3.BooleanUtils;
 
 public class RegisteredInput {
-  private static final String IP_TOR = "127.0.0.1";
-
   private String poolId;
-  private String username;
+  private String username; // Sender for Soroban clients
   private TxOutPoint outPoint;
   private boolean liquidity;
-  private String ip;
+  private Boolean tor; // null for Soroban clients until confirmed
+  private long since;
   private String lastUserHash; // unknown until confirmInput attempt
+  private SorobanInput sorobanInput; // null for non-Soroban clients
+  private Long confirmingSince; // null until confirming
+  private String quarantineReason; // only set when on "quarantine" for current mix
+  private byte[] signedBordereau; // after input confirmation
 
   public RegisteredInput(
       String poolId,
       String username,
       boolean liquidity,
       TxOutPoint outPoint,
-      String ip,
-      String lastUserHash) {
+      Boolean tor,
+      String lastUserHash,
+      SorobanInput sorobanInput) {
     this.poolId = poolId;
     this.username = username;
     this.liquidity = liquidity;
     this.outPoint = outPoint;
-    this.ip = ip;
+    this.tor = tor;
+    this.since = System.currentTimeMillis();
     this.lastUserHash = lastUserHash;
+    this.sorobanInput = sorobanInput;
+    this.confirmingSince = null;
+    this.quarantineReason = null;
   }
 
   public long computeMinerFees(Pool pool) {
@@ -39,6 +48,10 @@ public class RegisteredInput {
     return username;
   }
 
+  public void setUsername(String username) {
+    this.username = username;
+  }
+
   public boolean isLiquidity() {
     return liquidity;
   }
@@ -47,8 +60,20 @@ public class RegisteredInput {
     return outPoint;
   }
 
-  public String getIp() {
-    return ip;
+  public Boolean getTor() {
+    return tor;
+  }
+
+  public long getSince() {
+    return since;
+  }
+
+  public boolean isSoroban() {
+    return sorobanInput != null;
+  }
+
+  public String getTypeStr() {
+    return isSoroban() ? "SOROBAN" : "CLASSIC";
   }
 
   public String getLastUserHash() {
@@ -59,8 +84,44 @@ public class RegisteredInput {
     this.lastUserHash = lastUserHash;
   }
 
-  public boolean isTor() {
-    return IP_TOR.equals(ip);
+  public SorobanInput getSorobanInput() {
+    return sorobanInput;
+  }
+
+  public void setSorobanInput(SorobanInput sorobanInput) {
+    this.sorobanInput = sorobanInput;
+  }
+
+  public Long getConfirmingSince() {
+    return confirmingSince;
+  }
+
+  public void setConfirmingSince(Long confirmingSince) {
+    this.confirmingSince = confirmingSince;
+  }
+
+  public boolean isQuarantine() {
+    return quarantineReason != null;
+  }
+
+  public String getQuarantineReason() {
+    return quarantineReason;
+  }
+
+  public void setQuarantineReason(String quarantineReason) {
+    this.quarantineReason = quarantineReason;
+  }
+
+  public void clearQuarantine() {
+    this.quarantineReason = null;
+  }
+
+  public byte[] getSignedBordereau() {
+    return signedBordereau;
+  }
+
+  public void setSignedBordereau(byte[] signedBordereau) {
+    this.signedBordereau = signedBordereau;
   }
 
   @Override
@@ -71,11 +132,17 @@ public class RegisteredInput {
         + outPoint
         + ", liquidity="
         + liquidity
+        + ", soroban="
+        + (sorobanInput != null)
         + ", username="
-        + username
-        + ", ip="
-        + ip
-        + ",lastUserHash="
-        + (lastUserHash != null ? lastUserHash : "null");
+        + (username != null ? username : "null")
+        + ", tor="
+        + BooleanUtils.toStringTrueFalse(tor)
+        + ", since="
+        + since
+        + ", lastUserHash="
+        + (lastUserHash != null ? lastUserHash : "null")
+        + ", confirmingSince="
+        + (confirmingSince != null ? confirmingSince : "null");
   }
 }

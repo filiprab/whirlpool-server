@@ -2,7 +2,7 @@ package com.samourai.whirlpool.server.services;
 
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
-import com.samourai.whirlpool.server.beans.BlameReason;
+import com.samourai.whirlpool.protocol.soroban.payload.beans.BlameReason;
 import com.samourai.whirlpool.server.beans.Mix;
 import com.samourai.whirlpool.server.beans.RegisteredInput;
 import com.samourai.whirlpool.server.integration.AbstractIntegrationTest;
@@ -44,9 +44,8 @@ public class BanServiceTest extends AbstractIntegrationTest {
 
     boolean liquidity = false; // mustmix
     RegisteredInput registeredInput =
-        testUtils
-            .computeConfirmedInput(mix.getPool().getPoolId(), UTXO_HASH, UTXO_INDEX, liquidity)
-            .getRegisteredInput();
+        testUtils.computeConfirmedInput(
+            mix.getPool().getPoolId(), UTXO_HASH, UTXO_INDEX, liquidity);
 
     // not banned yet
     Assertions.assertFalse(banService.findActiveBan(UTXO_HASH, UTXO_INDEX).isPresent());
@@ -97,9 +96,8 @@ public class BanServiceTest extends AbstractIntegrationTest {
 
     boolean liquidity = true; // liquidity
     RegisteredInput registeredInput =
-        testUtils
-            .computeConfirmedInput(mix.getPool().getPoolId(), UTXO_HASH, UTXO_INDEX, liquidity)
-            .getRegisteredInput();
+        testUtils.computeConfirmedInput(
+            mix.getPool().getPoolId(), UTXO_HASH, UTXO_INDEX, liquidity);
 
     // not banned yet
     Assertions.assertFalse(banService.findActiveBan(UTXO_HASH, UTXO_INDEX).isPresent());
@@ -165,7 +163,8 @@ public class BanServiceTest extends AbstractIntegrationTest {
         expectedDuration * recidivismFactor, banTO2.getDuration()); // duration doubled
 
     // ban
-    BanTO banTO3 = banService.banTemporary(identifier, null, "test2");
+    Timestamp now = new Timestamp(System.currentTimeMillis());
+    BanTO banTO3 = banService.banTemporary(now, identifier, null, "test2");
     Assertions.assertEquals(
         expectedDuration * recidivismFactor * recidivismFactor,
         banTO3.getDuration()); // duration doubled

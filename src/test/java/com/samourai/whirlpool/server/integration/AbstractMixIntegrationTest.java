@@ -3,6 +3,8 @@ package com.samourai.whirlpool.server.integration;
 import com.samourai.wallet.segwit.SegwitAddress;
 import com.samourai.whirlpool.client.utils.ClientUtils;
 import com.samourai.whirlpool.server.beans.Mix;
+import com.samourai.whirlpool.server.beans.Pool;
+import com.samourai.whirlpool.server.beans.SorobanInput;
 import com.samourai.whirlpool.server.beans.rpc.TxOutPoint;
 import com.samourai.whirlpool.server.services.*;
 import java.lang.invoke.MethodHandles;
@@ -22,31 +24,36 @@ public abstract class AbstractMixIntegrationTest extends AbstractIntegrationTest
 
   @Autowired protected RegisterOutputService registerOutputService;
 
-  protected TxOutPoint registerInput(Mix mix, String username, int confirmations, boolean liquidity)
+  protected TxOutPoint registerInput(
+      Mix mix,
+      String username,
+      int confirmations,
+      boolean liquidity,
+      SorobanInput sorobanInputOrNull)
       throws Exception {
-    String poolId = mix.getPool().getPoolId();
+    Pool pool = mix.getPool();
+    String poolId = pool.getPoolId();
 
     ECKey ecKey = new ECKey();
     String signature = ecKey.signMessage(poolId);
 
-    long inputBalance = mix.getPool().computePremixBalanceMin(liquidity);
-    if (!liquidity) {
-      inputBalance += +mix.getPool().getMinerFeeMix();
-    }
+    long inputBalance = pool.computePremixBalanceMax(liquidity);
     TxOutPoint txOutPoint =
         createAndMockTxOutPoint(
             new SegwitAddress(ecKey.getPubKey(), cryptoService.getNetworkParameters()),
             inputBalance,
             confirmations);
 
-    registerInputService.registerInput(
-        poolId,
+    registerInput(
+        pool,
         username,
         signature,
         txOutPoint.getHash(),
         txOutPoint.getIndex(),
         liquidity,
-        "127.0.0.1");
+        false,
+        blockchainDataService.getBlockHeight(),
+        sorobanInputOrNull);
     waitMixLimitsService(mix);
     return txOutPoint;
   }
@@ -64,12 +71,14 @@ public abstract class AbstractMixIntegrationTest extends AbstractIntegrationTest
       int confirmations,
       boolean liquidity,
       RSABlindingParameters blindingParams,
-      byte[] bordereau)
+      byte[] bordereau,
+      SorobanInput sorobanInputOrNull)
       throws Exception {
     int nbConfirming = mix.getNbConfirmingInputs();
 
     // REGISTER_INPUT
-    TxOutPoint txOutPoint = registerInput(mix, username, confirmations, liquidity);
+    TxOutPoint txOutPoint =
+        registerInput(mix, username, confirmations, liquidity, sorobanInputOrNull);
 
     boolean queued = (mix.getNbConfirmingInputs() == nbConfirming);
     if (queued) {
@@ -79,11 +88,17 @@ public abstract class AbstractMixIntegrationTest extends AbstractIntegrationTest
       return null;
     }
 
-    return confirmInput(mix, username, blindingParams, bordereau);
+    return confirmInput(
+        mix, username, blindingParams, bordereau, txOutPoint.getHash(), txOutPoint.getIndex());
   }
 
   public byte[] confirmInput(
-      Mix mix, String username, RSABlindingParameters blindingParams, byte[] bordereau)
+      Mix mix,
+      String username,
+      RSABlindingParameters blindingParams,
+      byte[] bordereau,
+      String utxoHash,
+      long utxoIndex)
       throws Exception {
     // blind bordereau
     if (blindingParams == null) {
@@ -96,8 +111,8 @@ public abstract class AbstractMixIntegrationTest extends AbstractIntegrationTest
 
     // CONFIRM_INPUT
     String mixId = mix.getMixId();
-    confirmInputService.confirmInputOrQueuePool(
-        mixId, username, blindedBordereau, "userHash" + username);
+    confirmInputService.confirmInput_webSocket(
+        mixId, blindedBordereau, "userHash" + username, username);
 
     // get a valid signed blinded bordereau
     byte[] signedBlindedBordereau =

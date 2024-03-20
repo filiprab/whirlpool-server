@@ -1,58 +1,96 @@
 package com.samourai.whirlpool.server.beans;
 
-import com.samourai.javaserver.exceptions.NotifiableException;
+import com.samourai.wallet.bip47.rpc.PaymentCode;
+import com.samourai.wallet.util.RandomUtil;
 import com.samourai.whirlpool.server.beans.rpc.TxOutPoint;
-import com.samourai.whirlpool.server.exceptions.AlreadyRegisteredInputException;
-import com.samourai.whirlpool.server.exceptions.ServerErrorCode;
 import com.samourai.whirlpool.server.utils.Utils;
-import java.lang.invoke.MethodHandles;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class InputPool {
-  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private Map<String, RegisteredInput> inputsById;
 
   public InputPool() {
     this.inputsById = new ConcurrentHashMap<>();
   }
 
-  public synchronized void register(RegisteredInput registeredInput) throws NotifiableException {
-    if (!hasInput(registeredInput.getOutPoint())) {
-      String username = registeredInput.getUsername();
-      if (!findByUsername(username).isPresent()) {
-        String inputId = Utils.computeInputId(registeredInput.getOutPoint());
-        inputsById.put(inputId, registeredInput);
-      } else {
-        throw new NotifiableException(
-            ServerErrorCode.INPUT_ALREADY_REGISTERED,
-            "Username already registered another input: " + username); // shouldn't happen...
-      }
-    } else {
-      throw new AlreadyRegisteredInputException(
-          "Input already registered: " + registeredInput.getOutPoint());
-    }
+  public void register(RegisteredInput registeredInput) {
+    // overwrite if it was already registered
+    String inputId = Utils.computeInputId(registeredInput);
+    inputsById.put(inputId, registeredInput);
   }
 
   public Optional<RegisteredInput> findByUsername(String username) {
-    return inputsById
-        .values()
-        .parallelStream()
-        .filter(registeredInput -> registeredInput.getUsername().equals(username))
+    return inputsById.values().parallelStream()
+        .filter(registeredInput -> username.equals(registeredInput.getUsername()))
         .findFirst();
   }
 
-  public synchronized Optional<RegisteredInput> removeRandom(
-      Predicate<Map.Entry<String, RegisteredInput>> filter) {
+  public boolean hasInput(RegisteredInput registeredInput) {
+    return find(registeredInput).isPresent();
+  }
+
+  public Optional<RegisteredInput> find(String utxoHash, long utxoIndex, String username) {
+    String inputId = Utils.computeInputId(utxoHash, utxoIndex, username);
+    return Optional.ofNullable(inputsById.get(inputId));
+  }
+
+  public Optional<RegisteredInput> find(RegisteredInput registeredInput) {
+    String inputId = Utils.computeInputId(registeredInput);
+    return Optional.ofNullable(inputsById.get(inputId));
+  }
+
+  public Optional<RegisteredInput> findByOutPoint(TxOutPoint outPoint) {
+    return findByOutPoint(outPoint.getHash(), outPoint.getIndex());
+  }
+
+  public Optional<RegisteredInput> findByOutPoint(String utxoHash, long utxoIndex) {
+    String outpointId = Utils.computeOutpointId(utxoHash, utxoIndex);
+    return inputsById.values().stream()
+        .filter(confirmedInput -> outpointId.equals(confirmedInput.getOutPoint().toKey()))
+        .findFirst();
+  }
+
+  public boolean hasOutPoint(TxOutPoint outPoint) {
+    return findByOutPoint(outPoint).isPresent();
+  }
+
+  public Optional<RegisteredInput> findBySorobanSender(PaymentCode sender) {
+    return inputsById.values().stream()
+        .filter(
+            confirmedInput ->
+                confirmedInput.getSorobanInput() != null
+                    && confirmedInput.getSorobanInput().getSender().equals(sender))
+        .findFirst();
+  }
+
+  public Optional<RegisteredInput> findByAddress(String address) {
+    String addressToLower = address.toLowerCase();
+    return inputsById.values().stream()
+        .filter(
+            confirmedInput ->
+                addressToLower.equals(confirmedInput.getOutPoint().getToAddress().toLowerCase()))
+        .findFirst();
+  }
+
+  public Collection<RegisteredInput> findByQuarantine(boolean quarantine) {
+    return inputsById.values().parallelStream()
+        .filter(registeredInput -> registeredInput.isQuarantine() == quarantine)
+        .collect(Collectors.toList());
+  }
+
+  public Collection<String> getQuarantineDetails() {
+    return findByQuarantine(true).stream()
+        .map(input -> input.getOutPoint().toKey() + ": " + input.getQuarantineReason())
+        .collect(Collectors.toList());
+  }
+
+  public synchronized Optional<RegisteredInput> removeRandom(Predicate<RegisteredInput> filter) {
     List<String> eligibleInputIds =
-        inputsById
-            .entrySet()
-            .parallelStream()
-            .filter(filter)
+        inputsById.entrySet().parallelStream()
+            .filter(e -> filter.test(e.getValue()))
             .map(entry -> entry.getKey())
             .collect(Collectors.toList());
     return removeRandom(eligibleInputIds);
@@ -60,7 +98,7 @@ public class InputPool {
 
   private synchronized Optional<RegisteredInput> removeRandom(List<String> eligibleInputIds) {
     if (!eligibleInputIds.isEmpty()) {
-      String randomInputId = Utils.getRandomEntry(eligibleInputIds);
+      String randomInputId = RandomUtil.getInstance().next(eligibleInputIds);
       RegisteredInput registeredInput = inputsById.remove(randomInputId);
       return Optional.of(registeredInput);
     }
@@ -68,12 +106,23 @@ public class InputPool {
   }
 
   public synchronized Optional<RegisteredInput> removeByUsername(String username) {
-    Optional<RegisteredInput> inputByUsername = findByUsername(username);
-    if (inputByUsername.isPresent()) {
-      String inputId = Utils.computeInputId(inputByUsername.get().getOutPoint());
+    return removeBy(findByUsername(username));
+  }
+
+  public synchronized Optional<RegisteredInput> remove(RegisteredInput registeredInput) {
+    return removeBy(find(registeredInput));
+  }
+
+  public synchronized Optional<RegisteredInput> removeBySorobanSender(PaymentCode sender) {
+    return removeBy(findBySorobanSender(sender));
+  }
+
+  protected Optional<RegisteredInput> removeBy(Optional<RegisteredInput> input) {
+    if (input.isPresent()) {
+      String inputId = Utils.computeInputId(input.get());
       inputsById.remove(inputId);
     }
-    return inputByUsername;
+    return input;
   }
 
   public synchronized Collection<RegisteredInput> clear() {
@@ -83,15 +132,15 @@ public class InputPool {
     return inputs;
   }
 
+  public synchronized void clearQuarantine() {
+    findByQuarantine(true).forEach(input -> input.clearQuarantine());
+  }
+
   public void resetLastUserHash() {
     inputsById.values().forEach(registedInput -> registedInput.setLastUserHash(null));
   }
 
   // ------------
-
-  public boolean hasInput(TxOutPoint outPoint) {
-    return inputsById.containsKey(Utils.computeInputId(outPoint));
-  }
 
   public boolean hasInputs() {
     return !inputsById.isEmpty();
@@ -102,6 +151,50 @@ public class InputPool {
   }
 
   public int getSizeByTor(boolean tor) {
-    return (int) inputsById.values().parallelStream().filter(input -> input.isTor() == tor).count();
+    return (int)
+        inputsById.values().parallelStream()
+            .filter(input -> Boolean.valueOf(tor).equals(input.getTor()))
+            .count();
+  }
+
+  public int getSizeBySoroban(boolean soroban) {
+    return getListBySoroban(soroban).size();
+  }
+
+  public Collection<RegisteredInput> getListBySoroban(boolean soroban) {
+    return inputsById.values().parallelStream()
+        .filter(input -> soroban == input.isSoroban())
+        .collect(Collectors.toList());
+  }
+
+  public Collection<SorobanInput> getListSorobanInputs() {
+    return getListBySoroban(true).parallelStream()
+        .map(confirmedInput -> confirmedInput.getSorobanInput())
+        .collect(Collectors.toList());
+  }
+
+  public int getSizeByLiquidity(boolean liquidity) {
+    return getListByLiquidity(liquidity).size();
+  }
+
+  public Collection<RegisteredInput> getListByLiquidity(boolean liquidity) {
+    return inputsById.values().parallelStream()
+        .filter(input -> liquidity == input.isLiquidity())
+        .collect(Collectors.toList());
+  }
+
+  public long sumAmount() {
+    return inputsById.values().stream().mapToLong(input -> input.getOutPoint().getValue()).sum();
+  }
+
+  public Collection<RegisteredInput> _getInputs() {
+    return inputsById.values();
+  }
+
+  public Collection<RegisteredInput> getListSorobanInputsExpired(long minLastSeen) {
+    return getListBySoroban(true).stream()
+        .filter(
+            registeredInput -> registeredInput.getSorobanInput().getSorobanLastSeen() < minLastSeen)
+        .collect(Collectors.toList());
   }
 }

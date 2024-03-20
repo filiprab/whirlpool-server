@@ -2,13 +2,13 @@ package com.samourai.whirlpool.server.utils;
 
 import com.samourai.wallet.api.backend.beans.UnspentOutput;
 import com.samourai.wallet.bip47.rpc.BIP47Wallet;
+import com.samourai.wallet.bip47.rpc.PaymentCode;
 import com.samourai.wallet.hd.HD_Wallet;
 import com.samourai.wallet.hd.HD_WalletFactoryGeneric;
 import com.samourai.wallet.segwit.SegwitAddress;
 import com.samourai.wallet.segwit.bech32.Bech32UtilGeneric;
 import com.samourai.wallet.send.provider.SimpleUtxoKeyProvider;
 import com.samourai.wallet.util.CryptoTestUtil;
-import com.samourai.whirlpool.server.beans.ConfirmedInput;
 import com.samourai.whirlpool.server.beans.Mix;
 import com.samourai.whirlpool.server.beans.Pool;
 import com.samourai.whirlpool.server.beans.RegisteredInput;
@@ -72,8 +72,13 @@ public class TestUtils {
   }
 
   public BIP47WalletAndHDWallet generateWallet() throws Exception {
-    byte seed[] = cryptoTestUtil.generateSeed();
+    byte seed[] = hdWalletFactory.generateSeed(12);
     return generateWallet(seed, "test");
+  }
+
+  public PaymentCode generatePaymentCode() throws Exception {
+    BIP47Wallet bip47Wallet = generateWallet().getBip47Wallet();
+    return bip47Wallet.getAccount(0).getPaymentCode();
   }
 
   public void assertPool(int nbMustMix, int nbLiquidity, Pool pool) {
@@ -121,14 +126,11 @@ public class TestUtils {
     return pem;
   }
 
-  public ConfirmedInput computeConfirmedInput(
+  public RegisteredInput computeConfirmedInput(
       String poolId, String utxoHash, long utxoIndex, boolean liquidity) {
     TxOutPoint outPoint = new TxOutPoint(utxoHash, utxoIndex, 1234, 99, null, "fakeReceiveAddress");
-    RegisteredInput registeredInput =
-        new RegisteredInput(poolId, "foo", liquidity, outPoint, "127.0.0.1", null);
-    ConfirmedInput confirmedInput =
-        new ConfirmedInput(registeredInput, "userHash" + utxoHash + utxoIndex);
-    return confirmedInput;
+    return new RegisteredInput(
+        poolId, "foo", liquidity, outPoint, false, "userHash" + utxoHash + utxoIndex, null);
   }
 
   public UnspentOutput computeUnspentOutput(String hash, int index, long value, String toAddress)

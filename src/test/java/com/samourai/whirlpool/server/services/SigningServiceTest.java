@@ -7,9 +7,9 @@ import com.samourai.wallet.util.TxUtil;
 import com.samourai.whirlpool.client.mix.handler.PremixHandler;
 import com.samourai.whirlpool.client.mix.handler.UtxoWithBalance;
 import com.samourai.whirlpool.client.utils.ClientUtils;
-import com.samourai.whirlpool.protocol.websocket.notifications.MixStatus;
-import com.samourai.whirlpool.server.beans.ConfirmedInput;
 import com.samourai.whirlpool.server.beans.Mix;
+import com.samourai.whirlpool.server.beans.MixStatus;
+import com.samourai.whirlpool.server.beans.Pool;
 import com.samourai.whirlpool.server.beans.RegisteredInput;
 import com.samourai.whirlpool.server.beans.rpc.TxOutPoint;
 import com.samourai.whirlpool.server.exceptions.IllegalInputException;
@@ -37,6 +37,8 @@ public class SigningServiceTest extends AbstractIntegrationTest {
 
   @Autowired private RegisterOutputService registerOutputService;
 
+  @Autowired private SigningService signingService;
+
   @BeforeEach
   @Override
   public void setUp() throws Exception {
@@ -47,25 +49,23 @@ public class SigningServiceTest extends AbstractIntegrationTest {
   @Test
   public void signing_success() throws Exception {
     // mix config
-    Mix mix = __nextMix(1, 0, 1, __getCurrentMix().getPool()); // 1 user
+    Mix mix = __nextMix(1, 0, 1, __getCurrentPoolId()); // 1 user
 
     // prepare input
     ECKey ecKey = new ECKey();
     boolean liquidity = false;
-    long inputBalance =
-        mix.getPool().computePremixBalanceMin(liquidity) + mix.getPool().getMinerFeeMix();
+    long inputBalance = mix.getPool().computePremixBalanceMax(liquidity);
     TxOutPoint txOutPoint =
         createAndMockTxOutPoint(new SegwitAddress(ecKey.getPubKey(), params), inputBalance, 10);
 
     // valid signature
-    UtxoWithBalance utxoWithBalance =
-        new UtxoWithBalance(txOutPoint.getHash(), txOutPoint.getIndex(), inputBalance);
+    UtxoWithBalance utxoWithBalance = txOutPoint.toUtxoWithBalance();
     PremixHandler premixHandler = new PremixHandler(utxoWithBalance, ecKey, "userPreHash");
 
     // test
     String username = "user1";
     String[] witness64 = doSigning(mix, premixHandler, liquidity, txOutPoint, username);
-    mixService.registerSignature(mix.getMixId(), username, witness64);
+    signingService.signing_webSocket(mix.getMixId(), witness64, username);
 
     // verify
     Assertions.assertEquals(MixStatus.SUCCESS, mix.getMixStatus());
@@ -74,26 +74,24 @@ public class SigningServiceTest extends AbstractIntegrationTest {
   @Test
   public void signing_failOnUnknownUsername() throws Exception {
     // mix config
-    Mix mix = __nextMix(1, 0, 1, __getCurrentMix().getPool()); // 1 user
+    Mix mix = __nextMix(1, 0, 1, __getCurrentPoolId()); // 1 user
 
     // prepare input
     ECKey ecKey = new ECKey();
     boolean liquidity = false;
-    long inputBalance =
-        mix.getPool().computePremixBalanceMin(liquidity) + mix.getPool().getMinerFeeMix();
+    long inputBalance = mix.getPool().computePremixBalanceMin(liquidity);
     TxOutPoint txOutPoint =
         createAndMockTxOutPoint(new SegwitAddress(ecKey.getPubKey(), params), inputBalance, 10);
 
     // valid signature
-    UtxoWithBalance utxoWithBalance =
-        new UtxoWithBalance(txOutPoint.getHash(), txOutPoint.getIndex(), inputBalance);
+    UtxoWithBalance utxoWithBalance = txOutPoint.toUtxoWithBalance();
     PremixHandler premixHandler = new PremixHandler(utxoWithBalance, ecKey, "userPreHash");
 
     // test
     try {
       String username = "user1";
       String[] witness64 = doSigning(mix, premixHandler, liquidity, txOutPoint, username);
-      mixService.registerSignature(mix.getMixId(), "dummy", witness64); // invalid user
+      signingService.signing_webSocket(mix.getMixId(), witness64, "dummy"); // invalid user
       Assertions.assertTrue(false);
     } catch (IllegalInputException e) {
       // verify
@@ -107,10 +105,9 @@ public class SigningServiceTest extends AbstractIntegrationTest {
   @Test
   public void signing_failOnDuplicate() throws Exception {
     // mix config
-    Mix mix = __nextMix(2, 0, 2, __getCurrentMix().getPool()); // 2 users
+    Mix mix = __nextMix(2, 0, 2, __getCurrentPoolId()); // 2 users
     boolean liquidity = false;
-    long inputBalance =
-        mix.getPool().computePremixBalanceMin(liquidity) + mix.getPool().getMinerFeeMix();
+    long inputBalance = mix.getPool().computePremixBalanceMin(liquidity);
 
     // trick to simulate one first user registered
     byte[] bordereau = ClientUtils.generateBordereau();
@@ -118,15 +115,15 @@ public class SigningServiceTest extends AbstractIntegrationTest {
     TxOutPoint firstTxOutPoint =
         createAndMockTxOutPoint(testUtils.generateSegwitAddress(), inputBalance, 10);
     mix.registerInput(
-        new ConfirmedInput(
-            new RegisteredInput(
-                mix.getPool().getPoolId(),
-                firstUsername,
-                false,
-                firstTxOutPoint,
-                "127.0.0.1",
-                null),
-            "userHash1"));
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            firstUsername,
+            false,
+            firstTxOutPoint,
+            false,
+            "userHash1",
+            null),
+        bordereau);
     mix.registerOutput(testUtils.generateSegwitAddress().getBech32AsString(), bordereau);
 
     // prepare input
@@ -135,16 +132,15 @@ public class SigningServiceTest extends AbstractIntegrationTest {
         createAndMockTxOutPoint(new SegwitAddress(ecKey.getPubKey(), params), inputBalance, 10);
 
     // valid signature
-    UtxoWithBalance utxoWithBalance =
-        new UtxoWithBalance(txOutPoint.getHash(), txOutPoint.getIndex(), inputBalance);
+    UtxoWithBalance utxoWithBalance = txOutPoint.toUtxoWithBalance();
     PremixHandler premixHandler = new PremixHandler(utxoWithBalance, ecKey, "userPreHash");
 
     // test
     String username = "user1";
     String[] witness64 = doSigning(mix, premixHandler, liquidity, txOutPoint, username);
-    mixService.registerSignature(mix.getMixId(), username, witness64); // valid
+    signingService.signing_webSocket(mix.getMixId(), witness64, username); // valid
     try {
-      mixService.registerSignature(mix.getMixId(), username, witness64); // duplicate signing
+      signingService.signing_webSocket(mix.getMixId(), witness64, username); // duplicate signing
       Assertions.assertTrue(false);
     } catch (IllegalInputException e) {
       // verify
@@ -158,19 +154,17 @@ public class SigningServiceTest extends AbstractIntegrationTest {
   @Test
   public void signing_failOnInvalidSignature() throws Exception {
     // mix config
-    Mix mix = __nextMix(1, 0, 1, __getCurrentMix().getPool()); // 1 user
+    Mix mix = __nextMix(1, 0, 1, __getCurrentPoolId()); // 1 user
 
     // prepare input
     ECKey ecKey = new ECKey();
     boolean liquidity = false;
-    long inputBalance =
-        mix.getPool().computePremixBalanceMin(liquidity) + mix.getPool().getMinerFeeMix();
+    long inputBalance = mix.getPool().computePremixBalanceMin(liquidity);
     TxOutPoint txOutPoint =
         createAndMockTxOutPoint(new SegwitAddress(ecKey.getPubKey(), params), inputBalance, 10);
 
     // invalid signature (invalid key)
-    UtxoWithBalance utxoWithBalance =
-        new UtxoWithBalance(txOutPoint.getHash(), txOutPoint.getIndex(), inputBalance);
+    UtxoWithBalance utxoWithBalance = txOutPoint.toUtxoWithBalance();
     PremixHandler premixHandler =
         new PremixHandler(utxoWithBalance, new ECKey(), "userPreHash"); // invalid key
 
@@ -178,7 +172,7 @@ public class SigningServiceTest extends AbstractIntegrationTest {
     try {
       String username = "user1";
       String[] witness64 = doSigning(mix, premixHandler, liquidity, txOutPoint, username);
-      mixService.registerSignature(mix.getMixId(), username, witness64);
+      signingService.signing_webSocket(mix.getMixId(), witness64, username);
       Assertions.assertTrue(false);
     } catch (IllegalInputException e) {
       // verify
@@ -196,21 +190,27 @@ public class SigningServiceTest extends AbstractIntegrationTest {
       String username)
       throws Exception {
     String mixId = mix.getMixId();
-    String poolId = mix.getPool().getPoolId();
+    Pool pool = mix.getPool();
+    String poolId = pool.getPoolId();
 
     // register input
     String signature = premixHandler.signMessage(poolId);
-    registerInputService.registerInput(
-        poolId,
-        username,
-        signature,
-        txOutPoint.getHash(),
-        txOutPoint.getIndex(),
-        liquidity,
-        "127.0.0.1");
+    RegisteredInput registeredInput =
+        registerInput(
+            pool,
+            username,
+            signature,
+            txOutPoint.getHash(),
+            txOutPoint.getIndex(),
+            liquidity,
+            false,
+            blockchainDataService.getBlockHeight(),
+            null);
     waitMixLimitsService(mix);
 
     // confirm input
+    mix.registerConfirmingInput(registeredInput);
+
     byte[] bordereau = ClientUtils.generateBordereau();
     RSAKeyParameters serverPublicKey = (RSAKeyParameters) mix.getKeyPair().getPublic();
     RSABlindingParameters blindingParams =
@@ -219,14 +219,13 @@ public class SigningServiceTest extends AbstractIntegrationTest {
     byte[] blindedBordereau = clientCryptoService.blind(bordereau, blindingParams);
     byte[] signedBlindedBordereau =
         confirmInputService
-            .confirmInputOrQueuePool(mixId, username, blindedBordereau, "userHash" + username)
+            .confirmInput_webSocket(mixId, blindedBordereau, "userHash" + username, username)
             .get();
 
     // register output
     byte[] unblindedSignedBordereau =
         clientCryptoService.unblind(signedBlindedBordereau, blindingParams);
-    registerOutputService.registerOutput(
-        mix.computeInputsHash(), unblindedSignedBordereau, receiveAddress, bordereau);
+    registerOutputService.registerOutput(mix, unblindedSignedBordereau, receiveAddress, bordereau);
 
     // signing
     Transaction txToSign = new Transaction(params, mix.getTx().bitcoinSerialize());

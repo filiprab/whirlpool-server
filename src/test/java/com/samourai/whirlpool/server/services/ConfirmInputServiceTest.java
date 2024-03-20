@@ -2,13 +2,14 @@ package com.samourai.whirlpool.server.services;
 
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
+import com.samourai.wallet.bip47.rpc.PaymentCode;
 import com.samourai.wallet.segwit.SegwitAddress;
 import com.samourai.whirlpool.client.utils.ClientUtils;
-import com.samourai.whirlpool.protocol.websocket.notifications.MixStatus;
-import com.samourai.whirlpool.server.beans.Mix;
-import com.samourai.whirlpool.server.beans.Pool;
+import com.samourai.whirlpool.protocol.WhirlpoolErrorCode;
+import com.samourai.whirlpool.server.beans.*;
 import com.samourai.whirlpool.server.beans.rpc.RpcTransaction;
 import com.samourai.whirlpool.server.beans.rpc.TxOutPoint;
+import com.samourai.whirlpool.server.exceptions.IllegalInputException;
 import com.samourai.whirlpool.server.integration.AbstractMixIntegrationTest;
 import java.lang.invoke.MethodHandles;
 import org.bitcoinj.core.ECKey;
@@ -39,7 +40,6 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
     String receiveAddress = testUtils.generateSegwitAddress().getBech32AsString();
 
     // REGISTER_INPUT
-    registerInput(mix, username, 999, false);
     testUtils.assertMix(0, 1, mix); // mustMix confirming
 
     // blind bordereau
@@ -48,7 +48,7 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
     byte[] blindedBordereau = clientCryptoService.blind(bordereau, blindingParams);
 
     // CONFIRM_INPUT
-    confirmInputService.confirmInputOrQueuePool(mixId, username, blindedBordereau, "userHash");
+    confirmInputService.confirmInput_webSocket(mixId, blindedBordereau, "userHash", username);
 
     // get a valid signed blinded bordereau
     byte[] signedBlindedBordereau =
@@ -59,8 +59,53 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
     Assertions.assertEquals(0, mix.getReceiveAddresses().size());
     byte[] unblindedSignedBordereau =
         clientCryptoService.unblind(signedBlindedBordereau, blindingParams);
-    registerOutputService.registerOutput(
-        mix.computeInputsHash(), unblindedSignedBordereau, receiveAddress, bordereau);
+    registerOutputService.registerOutput(mix, unblindedSignedBordereau, receiveAddress, bordereau);
+    Assertions.assertEquals(1, mix.getReceiveAddresses().size());
+
+    // TEST
+
+    // VERIFY
+    testUtils.assertMix(1, 0, mix); // mustMix confirmed
+    Thread.sleep(5000);
+  }
+
+  @Test
+  public void confirmInput_shouldSuccessWhenValid_soroban() throws Exception {
+    Mix mix = __getCurrentMix();
+    String username = "testusername";
+    String receiveAddress = testUtils.generateSegwitAddress().getBech32AsString();
+
+    // REGISTER_INPUT
+    SorobanInput sorobanInput = generateSorobanInput(mix.getPool().getPoolId(), false);
+    TxOutPoint outPoint = registerInput(mix, username, 999, false, sorobanInput);
+    testUtils.assertMix(0, 1, mix); // mustMix confirming
+
+    // blind bordereau
+    byte[] bordereau = ClientUtils.generateBordereau();
+    RSABlindingParameters blindingParams = computeBlindingParams(mix);
+    byte[] blindedBordereau = clientCryptoService.blind(bordereau, blindingParams);
+
+    // CONFIRM_INPUT
+    PaymentCode sender = sorobanInput.getSender();
+    RegisteredInput registeredInput =
+        mix.removeConfirmingInputBySender(sender)
+            .orElseThrow(
+                () ->
+                    new IllegalInputException(
+                        WhirlpoolErrorCode.SERVER_ERROR,
+                        "Confirming input not found: sender=" + sender.toString()));
+    confirmInputService.confirmInput(mix, registeredInput, blindedBordereau, "userHash");
+
+    // get a valid signed blinded bordereau
+    byte[] signedBlindedBordereau =
+        cryptoService.signBlindedOutput(blindedBordereau, mix.getKeyPair());
+
+    // REGISTER_OUTPUT
+    mix.setMixStatusAndTime(MixStatus.REGISTER_OUTPUT);
+    Assertions.assertEquals(0, mix.getReceiveAddresses().size());
+    byte[] unblindedSignedBordereau =
+        clientCryptoService.unblind(signedBlindedBordereau, blindingParams);
+    registerOutputService.registerOutput(mix, unblindedSignedBordereau, receiveAddress, bordereau);
     Assertions.assertEquals(1, mix.getReceiveAddresses().size());
 
     // TEST
@@ -76,15 +121,13 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
     String mixId = mix.getMixId();
     Pool pool = mix.getPool();
     String poolId = mix.getPool().getPoolId();
-    String receiveAddress = testUtils.generateSegwitAddress().getBech32AsString();
 
     ECKey ecKey = new ECKey();
     SegwitAddress inputAddress =
         new SegwitAddress(ecKey.getPubKey(), cryptoService.getNetworkParameters());
     String signature = ecKey.signMessage(poolId);
 
-    long inputBalance =
-        mix.getPool().computePremixBalanceMin(false) + mix.getPool().getMinerFeeMix();
+    long inputBalance = mix.getPool().computePremixBalanceMin(false);
 
     // same hash
     RpcTransaction rpcTransaction =
@@ -97,26 +140,32 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
     Assertions.assertEquals(1, txOutPoint2.getIndex());
 
     // TEST
-    registerInputService.registerInput(
-        poolId,
-        "user1",
-        signature,
-        txOutPoint1.getHash(),
-        txOutPoint1.getIndex(),
-        false,
-        "127.0.0.1");
+    registerInput(
+            pool,
+            "user1",
+            signature,
+            txOutPoint1.getHash(),
+            txOutPoint1.getIndex(),
+            false,
+            false,
+            blockchainDataService.getBlockHeight(),
+            null)
+        .getOutPoint();
     waitMixLimitsService(mix);
     testUtils.assertPoolEmpty(pool);
     testUtils.assertMix(0, 1, mix); // confirming
 
-    registerInputService.registerInput(
-        poolId,
-        "user2",
-        signature,
-        txOutPoint2.getHash(),
-        txOutPoint2.getIndex(),
-        false,
-        "127.0.0.1");
+    registerInput(
+            pool,
+            "user2",
+            signature,
+            txOutPoint2.getHash(),
+            txOutPoint2.getIndex(),
+            false,
+            false,
+            blockchainDataService.getBlockHeight(),
+            null)
+        .getOutPoint();
     waitMixLimitsService(mix);
     testUtils.assertPoolEmpty(pool);
     testUtils.assertMix(0, 2, mix); // confirming
@@ -127,8 +176,8 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
     byte[] blindedBordereau = clientCryptoService.blind(bordereau, blindingParams);
 
     // CONFIRM_INPUT
-    confirmInputService.confirmInputOrQueuePool(mixId, "user1", blindedBordereau, "userHash1");
-    confirmInputService.confirmInputOrQueuePool(mixId, "user2", blindedBordereau, "userHash2");
+    confirmInputService.confirmInput_webSocket(mixId, blindedBordereau, "userHash1", "user1");
+    confirmInputService.confirmInput_webSocket(mixId, blindedBordereau, "userHash2", "user2");
 
     // VERIFY
     testUtils.assertMix(1, 0, mix); // 1 mustMix confirmed
@@ -148,8 +197,7 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
         new SegwitAddress(ecKey.getPubKey(), cryptoService.getNetworkParameters());
     String signature = ecKey.signMessage(poolId);
 
-    long inputBalance =
-        mix.getPool().computePremixBalanceMin(false) + mix.getPool().getMinerFeeMix();
+    long inputBalance = mix.getPool().computePremixBalanceMin(false);
 
     // different hashs
     RpcTransaction rpcTransaction =
@@ -164,26 +212,30 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
     Assertions.assertEquals(1, txOutPoint2.getIndex());
 
     // TEST
-    registerInputService.registerInput(
-        poolId,
+    registerInput(
+        pool,
         "user1",
         signature,
         txOutPoint1.getHash(),
         txOutPoint1.getIndex(),
         false,
-        "127.0.0.1");
+        false,
+        blockchainDataService.getBlockHeight(),
+        null);
     waitMixLimitsService(mix);
     testUtils.assertPoolEmpty(pool);
     testUtils.assertMix(0, 1, mix); // confirming
 
-    registerInputService.registerInput(
-        poolId,
+    registerInput(
+        pool,
         "user2",
         signature,
         txOutPoint2.getHash(),
         txOutPoint2.getIndex(),
         false,
-        "127.0.0.1");
+        false,
+        blockchainDataService.getBlockHeight(),
+        null);
     waitMixLimitsService(mix);
     testUtils.assertPoolEmpty(pool);
     testUtils.assertMix(0, 2, mix); // confirming
@@ -194,9 +246,9 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
     byte[] blindedBordereau = clientCryptoService.blind(bordereau, blindingParams);
 
     // CONFIRM_INPUT
-    confirmInputService.confirmInputOrQueuePool(mixId, "user1", blindedBordereau, "userHash1");
-    confirmInputService.confirmInputOrQueuePool(
-        mixId, "user2", blindedBordereau, "userHash1"); // same userHash
+    confirmInputService.confirmInput_webSocket(mixId, blindedBordereau, "userHash1", "user1");
+    confirmInputService.confirmInput_webSocket(
+        mixId, blindedBordereau, "userHash1", "user2"); // same userHash
     waitMixLimitsService(mix);
 
     // VERIFY
@@ -207,43 +259,42 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
 
   @Test
   public void confirmInput_shouldQueueWhenMaxAnonymitySetReached() throws Exception {
-    Pool pool = __getCurrentMix().getPool();
-    Mix mix = __nextMix(1, 0, 2, pool); // 2 mustMix max
+    Mix mix = __nextMix(1, 0, 2, __getCurrentPoolId()); // 2 mustMix max
+    Pool pool = mix.getPool();
 
     // 1/2
-    registerInputAndConfirmInput(mix, "user1", 999, false, null, null);
+    registerInputAndConfirmInput(mix, "user1", 999, false, null, null, null);
     testUtils.assertMix(1, 0, mix); // mustMix confirmed
     testUtils.assertPool(0, 0, pool);
 
     // 2/2
-    registerInputAndConfirmInput(mix, "user2", 999, false, null, null);
+    registerInputAndConfirmInput(mix, "user2", 999, false, null, null, null);
     testUtils.assertMix(2, 0, mix); // mustMix confirmed
     testUtils.assertPool(0, 0, pool);
 
     // 3/2 => queued
-    registerInputAndConfirmInput(mix, "user3", 999, false, null, null);
+    registerInputAndConfirmInput(mix, "user3", 999, false, null, null, null);
     testUtils.assertMix(2, 0, mix); // mustMix queued
   }
 
   @Test
   public void confirmInput_shouldQueueWhenMaxMustMixReached() throws Exception {
     Mix mix =
-        __nextMix(
-            1, 1, 2, __getCurrentMix().getPool()); // 2 users max - 1 liquidityMin = 1 mustMix max
+        __nextMix(1, 1, 2, __getCurrentPoolId()); // 2 users max - 1 liquidityMin = 1 mustMix max
     Pool pool = mix.getPool();
 
     // 1/2 mustMix
-    registerInputAndConfirmInput(mix, "mustMix1", 999, false, null, null);
+    registerInputAndConfirmInput(mix, "mustMix1", 999, false, null, null, null);
     testUtils.assertMix(1, 0, mix); // mustMix confirmed
     testUtils.assertPool(0, 0, pool);
 
     // 2/2 mustMix => queued
-    registerInputAndConfirmInput(mix, "mustMix2", 999, false, null, null);
+    registerInputAndConfirmInput(mix, "mustMix2", 999, false, null, null, null);
     testUtils.assertMix(1, 0, mix); // mustMix queued
     testUtils.assertPool(1, 0, pool);
 
     // 1/1 liquidity
-    registerInputAndConfirmInput(mix, "liquidity1", 999, true, null, null);
+    registerInputAndConfirmInput(mix, "liquidity1", 999, true, null, null, null);
     testUtils.assertMix(2, 0, mix); // liquidity confirmed
     testUtils.assertPool(1, 0, pool);
   }
@@ -251,22 +302,21 @@ public class ConfirmInputServiceTest extends AbstractMixIntegrationTest {
   @Test
   public void confirmInput_shouldRequeueLateConfirmingInputs() throws Exception {
     Mix mix =
-        __nextMix(
-            1, 1, 2, __getCurrentMix().getPool()); // 2 users max - 1 liquidityMin = 1 mustMix max
+        __nextMix(1, 1, 2, __getCurrentPoolId()); // 2 users max - 1 liquidityMin = 1 mustMix max
     Pool pool = mix.getPool();
 
     // 1/1 mustMix
-    registerInput(mix, "mustMix1", 999, false);
+    registerInput(mix, "mustMix1", 999, false, null);
     testUtils.assertMix(0, 1, mix); // mustMix confirming
     testUtils.assertPool(0, 0, pool);
 
     // 2/1 mustMix => confirmed
-    registerInputAndConfirmInput(mix, "mustMix2", 999, false, null, null);
+    registerInputAndConfirmInput(mix, "mustMix2", 999, false, null, null, null);
     testUtils.assertMix(1, 1, mix); // mustMix queued
     testUtils.assertPool(0, 0, pool);
 
     // 1/1 liquidity
-    registerInputAndConfirmInput(mix, "liquidity1", 999, true, null, null);
+    registerInputAndConfirmInput(mix, "liquidity1", 999, true, null, null, null);
 
     // liquidity confirmed, mustmix1 requeued
     testUtils.assertMix(2, 0, mix);

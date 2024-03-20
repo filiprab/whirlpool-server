@@ -1,12 +1,12 @@
 package com.samourai.whirlpool.server.controllers.web;
 
-import com.samourai.whirlpool.protocol.websocket.notifications.MixStatus;
 import com.samourai.whirlpool.server.beans.Mix;
+import com.samourai.whirlpool.server.beans.MixStatus;
 import com.samourai.whirlpool.server.config.WhirlpoolServerConfig;
 import com.samourai.whirlpool.server.controllers.web.beans.WhirlpoolDashboardTemplateModel;
 import com.samourai.whirlpool.server.services.MixLimitsService;
-import com.samourai.whirlpool.server.services.MixService;
 import com.samourai.whirlpool.server.services.PoolService;
+import com.samourai.whirlpool.server.services.RegisterInputService;
 import java.lang.invoke.MethodHandles;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -28,18 +28,16 @@ public class StatusWebController {
 
   private WhirlpoolServerConfig serverConfig;
   private PoolService poolService;
-  private MixService mixService;
   private MixLimitsService mixLimitsService;
 
   @Autowired
   public StatusWebController(
       WhirlpoolServerConfig serverConfig,
       PoolService poolService,
-      MixService mixService,
-      MixLimitsService mixLimitsService) {
+      MixLimitsService mixLimitsService,
+      RegisterInputService registerInputService) {
     this.serverConfig = serverConfig;
     this.poolService = poolService;
-    this.mixService = mixService;
     this.mixLimitsService = mixLimitsService;
   }
 
@@ -55,6 +53,7 @@ public class StatusWebController {
               Mix mix = pool.getCurrentMix();
               Map<String, Object> poolAttributes = new HashMap<>();
               poolAttributes.put("poolId", pool.getPoolId());
+              poolAttributes.put("mixId", mix.getMixId());
               poolAttributes.put("denomination", pool.getDenomination());
               poolAttributes.put("feeValue", pool.getPoolFee().getFeeValue());
               poolAttributes.put("feeAccept", pool.getPoolFee().getFeeAccept());
@@ -64,19 +63,24 @@ public class StatusWebController {
               poolAttributes.put("minMustMix", pool.getMinMustMix());
               poolAttributes.put("minLiquidity", pool.getMinLiquidity());
               poolAttributes.put("poolSurge", pool.getSurge());
+              poolAttributes.put(
+                  "surgeDisabledForLowLiquidityPool", pool.isSurgeDisabledForLowLiquidityPool());
               poolAttributes.put("mixSurge", mix.getSurge());
               poolAttributes.put("minerFee", pool.getMinerFee());
+              poolAttributes.put("minerFeeMix", pool.getMinerFeeMix());
+              poolAttributes.put("minLiquidityPoolForSurge", pool.getMinLiquidityPoolForSurge());
               pool.getMinerFee().getMinerFeeMin(); // used in template
               pool.getMinerFee().getMinerFeeCap(); // used in template
               pool.getMinerFee().getMinerFeeMax(); // used in template
-              pool.getMinerFee().getMinerFeeMix(); // used in template
+              pool.getMinerFee().getMinRelaySatPerB(); // used in template
+              pool.getMinerFeeMix(); // used in template
               poolAttributes.put("tx0MaxOutputs", pool.getTx0MaxOutputs());
               poolAttributes.put("minerFeeAccumulated", mix.computeMinerFeeAccumulated());
               poolAttributes.put("nbInputs", mix.getNbInputs());
               poolAttributes.put("nbInputsNonSurge", mix.getNbInputsNonSurge());
               poolAttributes.put("nbInputsSurge", mix.getNbInputsSurge());
-              poolAttributes.put("nbInputsMustMix", mix.getNbInputsMustMix());
-              poolAttributes.put("nbInputsLiquidities", mix.getNbInputsLiquidities());
+              poolAttributes.put("inputsMustMix", mix.getInputsMustMix());
+              poolAttributes.put("inputsLiquidities", mix.getInputsLiquidities());
               poolAttributes.put("elapsedTime", mix.getElapsedTime());
 
               Long currentStepElapsedTime =
@@ -101,9 +105,24 @@ public class StatusWebController {
                       mix.getMixStatus(), currentStepElapsedTime, currentStepRemainingTime);
               poolAttributes.put("currentStepProgressLabel", currentStepProgressLabel);
 
-              poolAttributes.put("mustMixQueued", mix.getPool().getMustMixQueue().getSize());
-              poolAttributes.put("liquiditiesQueued", mix.getPool().getLiquidityQueue().getSize());
-              poolAttributes.put("mustMixQueued", mix.getPool().getMustMixQueue().getSize());
+              poolAttributes.put(
+                  "mustMixQueuedNoQuarantine",
+                  mix.getPool().getMustMixQueue().findByQuarantine(false));
+              poolAttributes.put(
+                  "mustMixQueuedSorobanInputs",
+                  mix.getPool().getMustMixQueue()._getInputsSoroban());
+              poolAttributes.put(
+                  "mustMixQueuedQuarantine",
+                  mix.getPool().getMustMixQueue().findByQuarantine(true));
+              poolAttributes.put(
+                  "liquiditiesQueuedNoQuarantine",
+                  mix.getPool().getLiquidityQueue().findByQuarantine(false));
+              poolAttributes.put(
+                  "liquiditiesQueuedSorobanInputs",
+                  mix.getPool().getLiquidityQueue()._getInputsSoroban());
+              poolAttributes.put(
+                  "liquiditiesQueuedQuarantine",
+                  mix.getPool().getLiquidityQueue().findByQuarantine(true));
 
               Map<MixStatus, Timestamp> timeStatus = mix.getTimeStatus();
               List<StatusStep> steps = new ArrayList<>();
@@ -122,7 +141,7 @@ public class StatusWebController {
               }
               poolAttributes.put("steps", steps);
 
-              List<StatusEvent> events = new ArrayList<>();
+              /*List<StatusEvent> events = new ArrayList<>();
               events.add(
                   new StatusEvent(
                       mix.getTimeStarted(),
@@ -131,7 +150,7 @@ public class StatusWebController {
               timeStatus.forEach(
                   ((mixStatus, timestamp) ->
                       events.add(new StatusEvent(timestamp, mixStatus.toString(), null))));
-              poolAttributes.put("events", events);
+              poolAttributes.put("events", events);*/
               pools.add(poolAttributes);
             });
     model.addAttribute("pools", pools);

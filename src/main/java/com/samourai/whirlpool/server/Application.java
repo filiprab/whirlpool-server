@@ -2,21 +2,22 @@ package com.samourai.whirlpool.server;
 
 import com.samourai.javaserver.config.ServerConfig;
 import com.samourai.javaserver.run.ServerApplication;
-import com.samourai.javaserver.utils.LogbackUtils;
-import com.samourai.javaserver.utils.ServerUtils;
 import com.samourai.wallet.api.backend.MinerFee;
+import com.samourai.wallet.xmanagerClient.XManagerClient;
 import com.samourai.whirlpool.server.beans.export.ActivityCsv;
 import com.samourai.whirlpool.server.config.WhirlpoolServerConfig;
 import com.samourai.whirlpool.server.services.BackendService;
 import com.samourai.whirlpool.server.services.ExportService;
+import com.samourai.whirlpool.server.services.MinerFeeService;
+import com.samourai.whirlpool.server.services.MixSorobanService;
 import com.samourai.whirlpool.server.services.rpc.RpcClientService;
+import com.samourai.whirlpool.server.services.soroban.SorobanCoordinatorService;
 import com.samourai.whirlpool.server.utils.Utils;
-import com.samourai.xmanager.client.XManagerClient;
 import com.samourai.xmanager.protocol.XManagerService;
 import com.samourai.xmanager.protocol.rest.AddressIndexResponse;
+import javax.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -27,8 +28,6 @@ import org.springframework.boot.web.servlet.ServletComponentScan;
 public class Application extends ServerApplication {
   private static final Logger log = LoggerFactory.getLogger(Application.class);
 
-  @Autowired private ServerUtils serverUtils;
-
   @Autowired private RpcClientService rpcClientService;
 
   @Autowired private ExportService exportService;
@@ -38,6 +37,13 @@ public class Application extends ServerApplication {
   @Autowired private XManagerClient xManagerClient;
 
   @Autowired private BackendService backendService;
+
+  @Autowired private MinerFeeService minerFeeService;
+
+  @Autowired private SorobanCoordinatorService sorobanCoordinatorService;
+
+  // required to launch on startup
+  @Autowired private MixSorobanService mixSorobanService;
 
   public static void main(String[] args) {
     SpringApplication.run(Application.class, args);
@@ -63,12 +69,17 @@ public class Application extends ServerApplication {
     ActivityCsv activityCsv = new ActivityCsv("STARTUP", null, null, null, null, null);
     exportService.exportActivity(activityCsv);
 
-    // log signing address
-    String signingAddress =
-        Utils.computeSigningAddress(
-                serverConfig.getSigningWallet(), serverConfig.getNetworkParameters())
-            .getAddressString();
-    log.info("Signing address: " + signingAddress);
+    /*
+    // force specific soroban node
+    NetworkParameters params = serverConfig.getNetworkParameters();
+    SorobanServerDex sorobanServerDex = SorobanServerDex.get(params);
+    Collection<String> sorobanUrlsClear =
+        Arrays.asList(sorobanServerDex.getSorobanUrls(false).iterator().next());
+    Collection<String> sorobanUrlsOnion =
+        Arrays.asList(sorobanServerDex.getSorobanUrls(true).iterator().next());
+
+    sorobanServerDex.setSorobanUrlsClear(sorobanUrlsClear);
+    sorobanServerDex.setSorobanUrlsOnion(sorobanUrlsOnion);*/
 
     // server starting...
   }
@@ -81,12 +92,12 @@ public class Application extends ServerApplication {
   @Override
   protected void setLoggerDebug() {
     Utils.setLoggerDebug();
+  }
 
-    // skip noisy logs
-    LogbackUtils.setLogLevel(
-        "org.springframework.web.socket.config.WebSocketMessageBrokerStats",
-        Level.ERROR.toString());
-
-    LogbackUtils.setLogLevel("com.samourai.javawsserver.config", Level.INFO.toString());
+  @PreDestroy
+  public void preDestroy() {
+    log.warn("********** Shutting down **********");
+    sorobanCoordinatorService.stop();
+    minerFeeService.stop();
   }
 }

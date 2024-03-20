@@ -1,36 +1,50 @@
 package com.samourai.whirlpool.server.integration;
 
-import com.samourai.http.client.HttpUsage;
-import com.samourai.http.client.IHttpClient;
-import com.samourai.http.client.IWhirlpoolHttpClientService;
+import com.samourai.http.client.JettyHttpClientService;
 import com.samourai.javaserver.utils.ServerUtils;
+import com.samourai.soroban.client.endpoint.meta.SorobanMetadataImpl;
+import com.samourai.soroban.client.endpoint.meta.typed.SorobanEndpointTyped;
+import com.samourai.soroban.client.endpoint.meta.typed.SorobanItemTyped;
+import com.samourai.soroban.client.wallet.SorobanWalletService;
 import com.samourai.wallet.api.backend.BackendServer;
 import com.samourai.wallet.bip47.rpc.BIP47Account;
 import com.samourai.wallet.bip47.rpc.BIP47Wallet;
+import com.samourai.wallet.bip47.rpc.PaymentCode;
 import com.samourai.wallet.bip47.rpc.java.Bip47UtilJava;
 import com.samourai.wallet.bip47.rpc.java.SecretPointFactoryJava;
+import com.samourai.wallet.bipFormat.BIP_FORMAT;
+import com.samourai.wallet.constants.BIP_WALLETS;
+import com.samourai.wallet.constants.SamouraiNetwork;
+import com.samourai.wallet.crypto.CryptoUtil;
 import com.samourai.wallet.hd.HD_Wallet;
 import com.samourai.wallet.hd.HD_WalletFactoryGeneric;
+import com.samourai.wallet.httpClient.IHttpClientService;
 import com.samourai.wallet.segwit.SegwitAddress;
 import com.samourai.wallet.segwit.bech32.Bech32UtilGeneric;
-import com.samourai.wallet.util.CryptoTestUtil;
-import com.samourai.wallet.util.FormatsUtilGeneric;
-import com.samourai.wallet.util.MessageSignUtilGeneric;
-import com.samourai.wallet.util.TxUtil;
+import com.samourai.wallet.sorobanClient.RpcWallet;
+import com.samourai.wallet.util.*;
+import com.samourai.wallet.xmanagerClient.XManagerClient;
+import com.samourai.whirlpool.client.WhirlpoolClient;
 import com.samourai.whirlpool.client.utils.ClientCryptoService;
 import com.samourai.whirlpool.client.wallet.WhirlpoolWalletConfig;
 import com.samourai.whirlpool.client.wallet.data.dataSource.DataSourceFactory;
 import com.samourai.whirlpool.client.wallet.data.dataSource.DojoDataSourceFactory;
+import com.samourai.whirlpool.client.whirlpool.WhirlpoolClientConfig;
+import com.samourai.whirlpool.client.whirlpool.WhirlpoolClientImpl;
+import com.samourai.whirlpool.protocol.SorobanAppWhirlpool;
+import com.samourai.whirlpool.protocol.WhirlpoolProtocol;
+import com.samourai.whirlpool.protocol.soroban.WhirlpoolApiCoordinator;
 import com.samourai.whirlpool.protocol.util.XorMask;
-import com.samourai.whirlpool.server.beans.Mix;
-import com.samourai.whirlpool.server.beans.Pool;
-import com.samourai.whirlpool.server.beans.PoolMinerFee;
+import com.samourai.whirlpool.server.beans.*;
 import com.samourai.whirlpool.server.beans.rpc.RpcTransaction;
 import com.samourai.whirlpool.server.beans.rpc.TxOutPoint;
 import com.samourai.whirlpool.server.config.WhirlpoolServerConfig;
+import com.samourai.whirlpool.server.config.WhirlpoolServerContext;
 import com.samourai.whirlpool.server.exceptions.IllegalInputException;
 import com.samourai.whirlpool.server.services.*;
 import com.samourai.whirlpool.server.services.rpc.MockRpcClientServiceImpl;
+import com.samourai.whirlpool.server.services.rpc.RpcClientServiceServer;
+import com.samourai.whirlpool.server.services.soroban.SorobanCoordinatorService;
 import com.samourai.whirlpool.server.utils.AssertMultiClientManager;
 import com.samourai.whirlpool.server.utils.TestUtils;
 import com.samourai.whirlpool.server.utils.Utils;
@@ -40,7 +54,6 @@ import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.Transaction;
 import org.bitcoinj.core.TransactionInput;
 import org.bitcoinj.core.TransactionOutput;
-import org.bitcoinj.params.TestNet3Params;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,9 +68,18 @@ import org.springframework.test.context.ActiveProfiles;
 public abstract class AbstractIntegrationTest {
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+  private static final String MOCK_SEED_WORDS = "all all all all all all all all all all all all";
+  private static final String MOCK_SEED_PASSPHRASE = "all";
+
+  protected static final long FEES_VALID = 975000;
+
   @LocalServerPort protected int port;
 
   @Autowired protected WhirlpoolServerConfig serverConfig;
+
+  protected AsyncUtil asyncUtil = AsyncUtil.getInstance();
+
+  @Autowired protected WhirlpoolServerContext serverContext;
 
   @Autowired protected CryptoService cryptoService;
 
@@ -72,10 +94,12 @@ public abstract class AbstractIntegrationTest {
   @Autowired protected InputValidationService inputValidationService;
 
   @Autowired protected ScodeService scodeService;
+  @Autowired protected Tx0Service tx0Service;
 
   @Autowired protected BlockchainDataService blockchainDataService;
 
   @Autowired protected WhirlpoolClientService whirlpoolClientService;
+  @Autowired private RegisterInputService registerInputService;
 
   @Autowired protected MockRpcClientServiceImpl rpcClientService;
 
@@ -102,18 +126,35 @@ public abstract class AbstractIntegrationTest {
   @Autowired protected HD_WalletFactoryGeneric hdWalletFactory;
 
   @Autowired protected BlameService blameService;
+  @Autowired protected PartnerService partnerService;
+  @Autowired protected ExportService exportService;
+  @Autowired protected XManagerClient xManagerClient;
+  @Autowired protected BackendService backendService;
+  @Autowired protected MetricService metricService;
+
+  @Autowired protected SorobanCoordinatorService sorobanCoordinatorService;
+
+  @Autowired protected MinerFeeService minerFeeService;
+
+  @Autowired protected WhirlpoolApiCoordinator whirlpoolApiCoordinator;
 
   @Autowired protected FeePayloadService feePayloadService;
-  @Autowired protected PushService pushService;
   @Autowired protected XorMask xorMask;
+  @Autowired protected CryptoUtil cryptoUtil;
+  @Autowired protected JavaHttpClientService httpClientService;
+  @Autowired protected RpcClientServiceServer rpcClientServiceServer;
+
+  @Autowired protected SorobanAppWhirlpool sorobanAppWhirlpool;
 
   protected MessageSignUtilGeneric messageSignUtil = MessageSignUtilGeneric.getInstance();
 
   protected MixLimitsService mixLimitsService;
 
-  private AssertMultiClientManager multiClientManager;
+  protected AssertMultiClientManager multiClientManager;
 
   protected NetworkParameters params;
+
+  protected RpcWallet rpcWallet;
 
   @BeforeEach
   public void setUp() throws Exception {
@@ -134,24 +175,29 @@ public abstract class AbstractIntegrationTest {
 
     configurePools(serverConfig.getMinerFees(), serverConfig.getPools());
     cacheService._reset();
+
+    HD_Wallet hdw84 =
+        walletFactory.restoreWallet(
+            MOCK_SEED_WORDS, MOCK_SEED_PASSPHRASE, serverConfig.getNetworkParameters());
+    BIP47Wallet bip47Wallet = new BIP47Wallet(hdw84);
+    rpcWallet = rpcClientServiceServer.getRpcWallet(bip47Wallet.getAccount(0));
   }
 
   protected void configurePools(
-      WhirlpoolServerConfig.MinerFeeConfig globalMinerFeeConfig,
+      WhirlpoolServerConfig.PoolMinerFeeConfig globalMinerFeeConfig,
       WhirlpoolServerConfig.PoolConfig... poolConfigs) {
     poolService.__reset(poolConfigs, globalMinerFeeConfig);
     mixService.__reset();
   }
 
-  protected void configurePool(PoolMinerFee minerFee, WhirlpoolServerConfig.PoolConfig poolConfig) {
-    poolService.__reset(poolConfig, minerFee);
+  protected Pool configurePool(PoolMinerFee minerFee, WhirlpoolServerConfig.PoolConfig poolConfig) {
+    Pool pool = poolService.__reset(poolConfig, minerFee);
     mixService.__reset();
+    return pool;
   }
 
-  protected Mix __nextMix(PoolMinerFee minerFee, WhirlpoolServerConfig.PoolConfig poolConfig)
-      throws IllegalInputException {
-    configurePool(minerFee, poolConfig);
-    Pool pool = poolService.getPool(poolConfig.getId());
+  protected Mix __nextMix(PoolMinerFee minerFee, WhirlpoolServerConfig.PoolConfig poolConfig) {
+    Pool pool = configurePool(minerFee, poolConfig);
     Mix mix = mixService.__nextMix(pool);
     return mix;
   }
@@ -162,8 +208,7 @@ public abstract class AbstractIntegrationTest {
       long minerFeeMin,
       long minerFeeCap,
       long minerFeeMax,
-      long minRelayFee,
-      long surgeRelayFee,
+      long minRelaySatPerB,
       int mustMixMin,
       int liquidityMin,
       int anonymitySet,
@@ -191,25 +236,28 @@ public abstract class AbstractIntegrationTest {
     poolConfig.setAnonymitySet(anonymitySet);
     poolConfig.setSurge(surge);
 
-    WhirlpoolServerConfig.MinerFeeConfig globalMinerFeeConfig =
-        new WhirlpoolServerConfig.MinerFeeConfig();
+    WhirlpoolServerConfig.PoolMinerFeeConfig globalMinerFeeConfig =
+        new WhirlpoolServerConfig.PoolMinerFeeConfig();
     globalMinerFeeConfig.setMinerFeeMin(minerFeeMin);
     globalMinerFeeConfig.setMinerFeeCap(minerFeeCap);
     globalMinerFeeConfig.setMinerFeeMax(minerFeeMax);
-    globalMinerFeeConfig.setMinRelayFee(minRelayFee);
-    globalMinerFeeConfig.setSurgeRelayFee(surgeRelayFee);
+    globalMinerFeeConfig.setMinRelaySatPerB(minRelaySatPerB);
+    globalMinerFeeConfig.setWeightTx(510);
+    globalMinerFeeConfig.setWeightPerSurge(102);
 
-    PoolMinerFee minerFee = new PoolMinerFee(globalMinerFeeConfig, null, mustMixMin);
+    PoolMinerFee minerFee = new PoolMinerFee(globalMinerFeeConfig, null);
 
     // run new mix for the pool
     return __nextMix(minerFee, poolConfig);
   }
 
-  protected Mix __nextMix(int mustMixMin, int liquidityMin, int anonymitySet, Pool copyPool)
+  protected Mix __nextMix(int mustMixMin, int liquidityMin, int anonymitySet, String poolId)
       throws IllegalInputException {
+    Pool copyPool = poolService.getPool(poolId);
+
     // create new pool
     WhirlpoolServerConfig.PoolConfig poolConfig = new WhirlpoolServerConfig.PoolConfig();
-    poolConfig.setId(Utils.generateUniqueString());
+    poolConfig.setId(copyPool.getPoolId());
     poolConfig.setDenomination(copyPool.getDenomination());
     poolConfig.setFeeValue(copyPool.getPoolFee().getFeeValue());
     poolConfig.setFeeAccept(copyPool.getPoolFee().getFeeAccept());
@@ -219,6 +267,11 @@ public abstract class AbstractIntegrationTest {
 
     // run new mix for the pool
     return __nextMix(copyPool.getMinerFee(), poolConfig);
+  }
+
+  protected String __getCurrentPoolId() {
+    Pool pool = poolService.getPools().iterator().next();
+    return pool.getPoolId();
   }
 
   protected Mix __getCurrentMix() {
@@ -242,10 +295,18 @@ public abstract class AbstractIntegrationTest {
             cryptoService,
             rpcClientService,
             blockchainDataService,
-            whirlpoolClientService,
-            port,
-            params);
+            whirlpoolClientConfig(),
+            params,
+            rpcWallet);
     return multiClientManager;
+  }
+
+  private WhirlpoolClientConfig whirlpoolClientConfig() {
+    return whirlpoolClientService.createWhirlpoolClientConfig();
+  }
+
+  public WhirlpoolClient createClient() {
+    return new WhirlpoolClientImpl(whirlpoolClientConfig());
   }
 
   public TxOutPoint createAndMockTxOutPoint(
@@ -288,27 +349,20 @@ public abstract class AbstractIntegrationTest {
 
   protected WhirlpoolWalletConfig computeWhirlpoolWalletConfig() {
     DataSourceFactory dataSourceFactory =
-        new DojoDataSourceFactory(BackendServer.TESTNET, false, null);
-    IWhirlpoolHttpClientService multiUsageHttpClientService =
-        new IWhirlpoolHttpClientService() {
-          @Override
-          public IHttpClient getHttpClient(HttpUsage httpUsage) {
-            return null;
-          }
-
-          @Override
-          public void stop() {}
-        };
+        new DojoDataSourceFactory(BackendServer.TESTNET, false, null, BIP_WALLETS.WHIRLPOOL);
+    IHttpClientService multiUsageHttpClientService = new JettyHttpClientService(30000);
+    SorobanWalletService sorobanWalletService =
+        new SorobanWalletService(bip47Util, BIP_FORMAT.PROVIDER, params, rpcClientServiceServer);
     WhirlpoolWalletConfig config =
         new WhirlpoolWalletConfig(
             dataSourceFactory,
             SecretPointFactoryJava.getInstance(),
-            null,
+            cryptoUtil,
+            sorobanWalletService,
             multiUsageHttpClientService,
-            null,
-            null,
-            null,
-            TestNet3Params.get(),
+            bip47Util,
+            SamouraiNetwork.TESTNET,
+            false,
             false);
     return config;
   }
@@ -344,7 +398,7 @@ public abstract class AbstractIntegrationTest {
     BIP47Account bip47Account = bip47Wallet.getAccount(0);
     String PCODE =
         "PM8TJXp19gCE6hQzqRi719FGJzF6AreRwvoQKLRnQ7dpgaakakFns22jHUqhtPQWmfevPQRCyfFbdDrKvrfw9oZv5PjaCerQMa3BKkPyUf9yN1CDR3w6";
-    Assertions.assertEquals(PCODE, bip47Account.getPaymentCode());
+    Assertions.assertEquals(PCODE, bip47Account.getPaymentCode().toString());
     return bip47Account;
   }
 
@@ -365,5 +419,62 @@ public abstract class AbstractIntegrationTest {
             params, transaction, new byte[] {(byte) txCounter, (byte) (txCounter++ >> 8)});
     transaction.addInput(transactionInput);
     return transactionOutput;
+  }
+
+  protected SorobanInput generateSorobanInput(String poolId, boolean liquidity) throws Exception {
+    PaymentCode sender = testUtils.generatePaymentCode();
+    SorobanEndpointTyped endpointReply =
+        sorobanAppWhirlpool.getEndpointRegisterInput(
+            serverContext.getCoordinatorWallet().getPaymentCode(), poolId, liquidity);
+    return new SorobanInput(sender, endpointReply);
+  }
+
+  protected String tx64FromTxHex(String txHex) {
+    return WhirlpoolProtocol.encodeBytes(org.bitcoinj.core.Utils.HEX.decode(txHex));
+  }
+
+  protected SorobanItemTyped mockSorobanItemTyped() {
+    return new SorobanItemTyped(
+        "foo", new SorobanMetadataImpl(), "foo", sorobanAppWhirlpool.getEndpointCoordinators());
+  }
+
+  protected RegisteredInput registerInput(
+      Pool pool,
+      String username,
+      String signature,
+      String utxoHash,
+      long utxoIndex,
+      boolean liquidity,
+      Boolean tor,
+      int blockHeight,
+      SorobanInput sorobaninputOrNull)
+      throws Exception {
+    RegisteredInput registeredInput =
+        registerInputService.validateRegisterInputRequest(
+            pool,
+            username,
+            signature,
+            utxoHash,
+            utxoIndex,
+            liquidity,
+            tor,
+            blockHeight,
+            sorobaninputOrNull);
+    if (sorobaninputOrNull == null) {
+      poolService.registerInput(registeredInput, null);
+    }
+    return registeredInput;
+  }
+
+  protected TxOutPoint generateOutPoint(long value) {
+    TxOutPoint txOutPoint =
+        new TxOutPoint(
+            Utils.getRandomString(65),
+            0,
+            value,
+            99,
+            null,
+            testUtils.generateSegwitAddress().getBech32AsString());
+    return txOutPoint;
   }
 }

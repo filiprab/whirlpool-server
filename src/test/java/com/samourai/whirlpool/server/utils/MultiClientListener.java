@@ -1,10 +1,11 @@
 package com.samourai.whirlpool.server.utils;
 
+import com.samourai.whirlpool.client.mix.handler.MixDestination;
 import com.samourai.whirlpool.client.mix.listener.MixFailReason;
 import com.samourai.whirlpool.client.mix.listener.MixStep;
 import com.samourai.whirlpool.client.whirlpool.listener.WhirlpoolClientListener;
 import com.samourai.whirlpool.protocol.beans.Utxo;
-import com.samourai.whirlpool.protocol.websocket.notifications.MixStatus;
+import com.samourai.whirlpool.server.beans.MixStatus;
 
 public class MultiClientListener implements WhirlpoolClientListener {
   // indice 0 is always null as currentMix starts from 1
@@ -17,18 +18,18 @@ public class MultiClientListener implements WhirlpoolClientListener {
   }
 
   @Override
-  public void success(Utxo receiveUtxo) {
+  public void success(String mixId, Utxo receiveUtxo, MixDestination receiveDestination) {
     mixStatus = MixStatus.SUCCESS;
     notifyMultiClientManager();
   }
 
   @Override
-  public void progress(MixStep step) {
+  public void progress(String mixId, MixStep step) {
     mixStep = step;
   }
 
   @Override
-  public void fail(MixFailReason reason, String notifiableError) {
+  public void fail(String mixId, MixFailReason reason, String notifiableError) {
     mixStatus = MixStatus.FAIL;
     notifyMultiClientManager();
   }

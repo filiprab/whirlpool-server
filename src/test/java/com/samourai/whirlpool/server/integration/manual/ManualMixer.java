@@ -1,6 +1,5 @@
 package com.samourai.whirlpool.server.integration.manual;
 
-import com.samourai.wallet.bip47.rpc.PaymentAddress;
 import com.samourai.wallet.bip47.rpc.PaymentCode;
 import com.samourai.wallet.bip47.rpc.java.Bip47UtilJava;
 import com.samourai.wallet.bip69.BIP69InputComparator;
@@ -119,20 +118,24 @@ public class ManualMixer {
       String toPCode = paymentCodes.get(iToPaymentCode).getPaymentCode();
 
       // sender calculates address with receiver's payment code
-      PaymentAddress sendAddress =
+      SegwitAddress sendAddress =
           bip47Util.getSendAddress(
-              wallets.get(fromPCode).getBip47Wallet(), new PaymentCode(toPCode), 0, params);
+              wallets.get(fromPCode).getBip47Wallet().getAccount(0),
+              new PaymentCode(toPCode),
+              0,
+              params);
       // receiver calculates address with sender's payment code
-      PaymentAddress receiveAddress =
+      SegwitAddress receiveAddress =
           bip47Util.getReceiveAddress(
-              wallets.get(toPCode).getBip47Wallet(), new PaymentCode(fromPCode), 0, params);
+              wallets.get(toPCode).getBip47Wallet().getAccount(0),
+              new PaymentCode(fromPCode),
+              0,
+              params);
 
       // sender calculates from pubkey
-      String addressFromSender =
-          bech32Util.toBech32(sendAddress.getSendECKey().getPubKey(), params);
+      String addressFromSender = bech32Util.toBech32(sendAddress.getECKey().getPubKey(), params);
       // receiver can calculate from privkey
-      String addressToReceiver =
-          bech32Util.toBech32(receiveAddress.getReceiveECKey().getPubKey(), params);
+      String addressToReceiver = bech32Util.toBech32(receiveAddress.getECKey().getPubKey(), params);
       Assertions.assertEquals(addressFromSender, addressToReceiver);
 
       Pair<Byte, byte[]> pair = Bech32Segwit.decode(isTestnet ? "tb" : "bc", addressToReceiver);
@@ -163,7 +166,7 @@ public class ManualMixer {
 
       final ECKey ecKey = toPrivKeys.get(fromAddress);
       final SegwitAddress segwitAddress = new SegwitAddress(ecKey, params);
-      final Script redeemScript = segwitAddress.segWitRedeemScript();
+      final Script redeemScript = segwitAddress.segwitRedeemScript();
 
       String utxo = toUTXO.get(Hex.toHexString(redeemScript.getProgram()));
       String[] s = utxo.split("-");
@@ -210,7 +213,7 @@ public class ManualMixer {
 
       final ECKey ecKey = toPrivKeys.get(fromAddress);
       final SegwitAddress segwitAddress = new SegwitAddress(ecKey, params);
-      final Script redeemScript = segwitAddress.segWitRedeemScript();
+      final Script redeemScript = segwitAddress.segwitRedeemScript();
       final Script scriptCode = redeemScript.scriptCode();
 
       TransactionSignature sig =

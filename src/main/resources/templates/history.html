@@ -28,7 +28,6 @@
                 <th scope="col">Duration</th>
                 <th scope="col">Volume</th>
                 <th scope="col">Txid</th>
-                <th scope="col">Raw</th>
             </tr>
             </thead>
             <tbody>
@@ -52,15 +51,11 @@
                 <td class="feesSatPerB">
                     <span th:text="${mix.feesPrice != null ? mix.feesPrice : ''}"/>
                 </td>
-                <td class="duration"><span th:text="${@templateUtil.duration(mix.mixDuration)}"/></td>
+                <td class="duration"><span th:text="${@templateUtil.duration(mix.mixDuration*1000)}"/></td>
                 <td class="mixed"><span th:text="${@templateUtil.satoshisToBtc(mix.amountOut)}"/>btc</td>
                 <td class="txid">
                     <a th:if="${mix.mixLog != null && mix.mixLog.txid != null}" th:href="${urlExplorer + mix.mixLog.txid}" target="_blank"><small th:text="${mix.mixLog.txid}"/></a>
                     <span th:if="${mix.mixLog == null || mix.mixLog.txid == null}">...</span>
-                </td>
-                <td class="rawTx">
-                    <a th:if="${mix.mixLog != null && mix.mixLog.rawTx != null}" href="#" data-toggle="popover" title="Raw" th:data-content="${mix.mixLog.rawTx}"><span data-feather="code" /></a>
-                    <span th:if="${mix.mixLog == null || mix.mixLog.rawTx == null}">...</span>
                 </td>
             </tr>
             </tbody>

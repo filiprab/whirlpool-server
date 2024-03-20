@@ -5,7 +5,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 import com.samourai.wallet.bip47.rpc.BIP47Wallet;
 import com.samourai.wallet.bip47.rpc.PaymentCode;
 import com.samourai.wallet.bipWallet.BipWallet;
-import com.samourai.wallet.hd.BIP_WALLET;
+import com.samourai.wallet.constants.BIP_WALLET;
 import com.samourai.wallet.hd.HD_Wallet;
 import com.samourai.wallet.segwit.SegwitAddress;
 import com.samourai.whirlpool.server.beans.Mix;
@@ -47,7 +47,7 @@ public class WhirlpoolSimpleIntegrationTest extends AbstractIntegrationTest {
     BIP47Wallet bip47OutputWallet = testUtils.generateWallet().getBip47Wallet();
     BipWallet bip84Wallet = testUtils.generateWallet().getBip84Wallet(BIP_WALLET.DEPOSIT_BIP84);
 
-    PaymentCode inputPCode = new PaymentCode(bip47InputWallet.getAccount(0).getPaymentCode());
+    PaymentCode inputPCode = bip47InputWallet.getAccount(0).getPaymentCode();
     // sender signs message with payment code notification address privkey
     ECKey inputNotifAddressECKey =
         bip47InputWallet.getAccount(0).getNotificationAddress().getECKey();
@@ -61,7 +61,7 @@ public class WhirlpoolSimpleIntegrationTest extends AbstractIntegrationTest {
             inputPCodeSig,
             params));
 
-    PaymentCode outputPCode = new PaymentCode(bip47OutputWallet.getAccount(0).getPaymentCode());
+    PaymentCode outputPCode = bip47OutputWallet.getAccount(0).getPaymentCode();
     // receiver signs message with payment code notification address
     ECKey outputNotifAddressECKey =
         bip47OutputWallet.getAccount(0).getNotificationAddress().getECKey();
@@ -83,8 +83,7 @@ public class WhirlpoolSimpleIntegrationTest extends AbstractIntegrationTest {
     Mix mix = __getCurrentMix();
 
     // mock TransactionOutPoint
-    long inputBalance =
-        mix.getPool().computePremixBalanceMin(false) + mix.getPool().getMinerFeeMix();
+    long inputBalance = mix.getPool().computePremixBalanceMin(false);
     TxOutPoint utxo = createAndMockTxOutPoint(inputP2SH_P2WPKH, inputBalance);
 
     AssertMultiClientManager multiClientManager = multiClientManager(1, mix);

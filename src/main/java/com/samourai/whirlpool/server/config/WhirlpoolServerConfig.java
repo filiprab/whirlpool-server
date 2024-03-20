@@ -2,9 +2,9 @@ package com.samourai.whirlpool.server.config;
 
 import com.samourai.javaserver.config.ServerConfig;
 import com.samourai.javaserver.exceptions.NotifiableException;
-import com.samourai.whirlpool.protocol.WhirlpoolProtocol;
+import com.samourai.wallet.constants.SamouraiNetwork;
+import com.samourai.whirlpool.protocol.WhirlpoolErrorCode;
 import com.samourai.whirlpool.server.beans.FailMode;
-import com.samourai.whirlpool.server.exceptions.ServerErrorCode;
 import com.samourai.whirlpool.server.services.ScodeService;
 import com.samourai.whirlpool.server.utils.Utils;
 import com.samourai.xmanager.protocol.XManagerService;
@@ -27,25 +27,29 @@ import org.springframework.context.annotation.Configuration;
 public class WhirlpoolServerConfig extends ServerConfig {
 
   private SamouraiFeeConfig samouraiFees;
-  private MinerFeeConfig minerFees;
+  private PoolMinerFeeConfig minerFees; // default pools config
+  private MinerFeePerBConfig feePerB; // for MinerFeeService
   private boolean testMode;
   private FailMode failMode;
   private boolean testnet;
   private boolean mixEnabled;
   private String metricsUrlApp;
   private String metricsUrlSystem;
+  private String monitoringHookUrl;
   private NetworkParameters networkParameters;
   private RpcClientConfig rpcClient;
   private RegisterInputConfig registerInput;
-  private RegisterOutputConfig registerOutput;
-  private SigningConfig signing;
-  private RevealOutputConfig revealOutput;
   private BanConfig ban;
   private ExportConfig export;
   private PartnerConfig[] partners;
   private PoolConfig[] pools;
   private long requestTimeout;
   private SecretWalletConfig signingWallet;
+  private SecretWalletConfig coordinatorWallet;
+  private String coordinatorName;
+  private String externalUrlClear;
+  private String externalUrlOnion;
+  private SamouraiNetwork samouraiNetwork;
 
   public SamouraiFeeConfig getSamouraiFees() {
     return samouraiFees;
@@ -55,12 +59,20 @@ public class WhirlpoolServerConfig extends ServerConfig {
     this.samouraiFees = samouraiFees;
   }
 
-  public MinerFeeConfig getMinerFees() {
+  public PoolMinerFeeConfig getMinerFees() {
     return minerFees;
   }
 
-  public void setMinerFees(MinerFeeConfig minerFees) {
+  public void setMinerFees(PoolMinerFeeConfig minerFees) {
     this.minerFees = minerFees;
+  }
+
+  public MinerFeePerBConfig getFeePerB() {
+    return feePerB;
+  }
+
+  public void setFeePerB(MinerFeePerBConfig feePerB) {
+    this.feePerB = feePerB;
   }
 
   public boolean isTestMode() {
@@ -103,6 +115,14 @@ public class WhirlpoolServerConfig extends ServerConfig {
     this.metricsUrlSystem = metricsUrlSystem;
   }
 
+  public String getMonitoringHookUrl() {
+    return monitoringHookUrl;
+  }
+
+  public void setMonitoringHookUrl(String monitoringHookUrl) {
+    this.monitoringHookUrl = monitoringHookUrl;
+  }
+
   public boolean isTestnet() {
     return testnet;
   }
@@ -131,30 +151,6 @@ public class WhirlpoolServerConfig extends ServerConfig {
 
   public void setRegisterInput(RegisterInputConfig registerInput) {
     this.registerInput = registerInput;
-  }
-
-  public RegisterOutputConfig getRegisterOutput() {
-    return registerOutput;
-  }
-
-  public void setRegisterOutput(RegisterOutputConfig registerOutput) {
-    this.registerOutput = registerOutput;
-  }
-
-  public SigningConfig getSigning() {
-    return signing;
-  }
-
-  public void setSigning(SigningConfig signing) {
-    this.signing = signing;
-  }
-
-  public RevealOutputConfig getRevealOutput() {
-    return revealOutput;
-  }
-
-  public void setRevealOutput(RevealOutputConfig revealOutput) {
-    this.revealOutput = revealOutput;
   }
 
   public BanConfig getBan() {
@@ -205,12 +201,51 @@ public class WhirlpoolServerConfig extends ServerConfig {
     this.signingWallet = signingWallet;
   }
 
+  public SecretWalletConfig getCoordinatorWallet() {
+    return coordinatorWallet;
+  }
+
+  public void setCoordinatorWallet(SecretWalletConfig coordinatorWallet) {
+    this.coordinatorWallet = coordinatorWallet;
+  }
+
+  public String getCoordinatorName() {
+    return coordinatorName;
+  }
+
+  public void setCoordinatorName(String coordinatorName) {
+    this.coordinatorName = coordinatorName;
+  }
+
+  public String getExternalUrlClear() {
+    return externalUrlClear;
+  }
+
+  public void setExternalUrlClear(String externalUrlClear) {
+    this.externalUrlClear = externalUrlClear;
+  }
+
+  public String getExternalUrlOnion() {
+    return externalUrlOnion;
+  }
+
+  public void setExternalUrlOnion(String externalUrlOnion) {
+    this.externalUrlOnion = externalUrlOnion;
+  }
+
+  public SamouraiNetwork getSamouraiNetwork() {
+    return samouraiNetwork;
+  }
+
+  public void setSamouraiNetwork(SamouraiNetwork samouraiNetwork) {
+    this.samouraiNetwork = samouraiNetwork;
+  }
+
   public static class RegisterInputConfig {
     private int minConfirmationsMustMix;
     private int minConfirmationsLiquidity;
     private int maxInputsSameHash;
     private int maxInputsSameUserHash;
-    private long confirmInterval;
 
     public int getMinConfirmationsMustMix() {
       return minConfirmationsMustMix;
@@ -242,50 +277,6 @@ public class WhirlpoolServerConfig extends ServerConfig {
 
     public void setMaxInputsSameUserHash(int maxInputsSameUserHash) {
       this.maxInputsSameUserHash = maxInputsSameUserHash;
-    }
-
-    public long getConfirmInterval() {
-      return confirmInterval;
-    }
-
-    public void setConfirmInterval(long confirmInterval) {
-      this.confirmInterval = confirmInterval;
-    }
-  }
-
-  public static class RegisterOutputConfig {
-    private int timeout;
-
-    public int getTimeout() {
-      return timeout;
-    }
-
-    public void setTimeout(int timeout) {
-      this.timeout = timeout;
-    }
-  }
-
-  public static class SigningConfig {
-    private int timeout;
-
-    public int getTimeout() {
-      return timeout;
-    }
-
-    public void setTimeout(int timeout) {
-      this.timeout = timeout;
-    }
-  }
-
-  public static class RevealOutputConfig {
-    private int timeout;
-
-    public int getTimeout() {
-      return timeout;
-    }
-
-    public void setTimeout(int timeout) {
-      this.timeout = timeout;
     }
   }
 
@@ -422,10 +413,11 @@ public class WhirlpoolServerConfig extends ServerConfig {
     private long denomination;
     private long feeValue;
     private Map<Long, Long> feeAccept;
-    private MinerFeeConfig minerFees;
+    private PoolMinerFeeConfig minerFees;
     private int mustMixMin;
     private int liquidityMin;
     private int surge;
+    private int minLiquidityPoolForSurge;
     private int anonymitySet;
     private int tx0MaxOutputs;
 
@@ -461,11 +453,11 @@ public class WhirlpoolServerConfig extends ServerConfig {
       this.feeAccept = feeAccept;
     }
 
-    public MinerFeeConfig getMinerFees() {
+    public PoolMinerFeeConfig getMinerFees() {
       return minerFees;
     }
 
-    public void setMinerFees(MinerFeeConfig minerFees) {
+    public void setMinerFees(PoolMinerFeeConfig minerFees) {
       this.minerFees = minerFees;
     }
 
@@ -491,6 +483,14 @@ public class WhirlpoolServerConfig extends ServerConfig {
 
     public void setSurge(int surge) {
       this.surge = surge;
+    }
+
+    public int getMinLiquidityPoolForSurge() {
+      return minLiquidityPoolForSurge;
+    }
+
+    public void setMinLiquidityPoolForSurge(int minLiquidityPoolForSurge) {
+      this.minLiquidityPoolForSurge = minLiquidityPoolForSurge;
     }
 
     public int getAnonymitySet() {
@@ -526,6 +526,8 @@ public class WhirlpoolServerConfig extends ServerConfig {
               + getLiquidityMin()
               + ", surge="
               + getSurge()
+              + ", minLiquidityPoolForSurge="
+              + getMinLiquidityPoolForSurge()
               + ", tx0MaxOutputs="
               + tx0MaxOutputs;
       return poolInfo;
@@ -645,12 +647,13 @@ public class WhirlpoolServerConfig extends ServerConfig {
     }
   }
 
-  public static class MinerFeeConfig {
+  public static class PoolMinerFeeConfig {
     private long minerFeeMin; // in satoshis
     private long minerFeeCap; // in satoshis
     private long minerFeeMax; // in satoshis
-    private long minRelayFee; // in satoshis
-    private long surgeRelayFee; // in satoshis
+    private long minRelaySatPerB;
+    private long weightTx; // in satoshis
+    private long weightPerSurge; // in satoshis
 
     public void validate() throws Exception {
       if (minerFeeMin <= 0) {
@@ -662,11 +665,14 @@ public class WhirlpoolServerConfig extends ServerConfig {
       if (minerFeeMax <= 0) {
         throw new Exception("Invalid minerFeeMax");
       }
-      if (minRelayFee <= 0) {
-        throw new Exception("Invalid minRelayFee");
+      if (minRelaySatPerB <= 0) {
+        throw new Exception("Invalid minRelaySatPerB");
       }
-      if (surgeRelayFee <= 0) {
-        throw new Exception("Invalid minRelayFee");
+      if (weightTx <= 0) {
+        throw new Exception("Invalid weightTx");
+      }
+      if (weightPerSurge <= 0) {
+        throw new Exception("Invalid weightPerSurge");
       }
     }
 
@@ -694,20 +700,28 @@ public class WhirlpoolServerConfig extends ServerConfig {
       this.minerFeeMax = minerFeeMax;
     }
 
-    public long getMinRelayFee() {
-      return minRelayFee;
+    public long getMinRelaySatPerB() {
+      return minRelaySatPerB;
     }
 
-    public void setMinRelayFee(long minRelayFee) {
-      this.minRelayFee = minRelayFee;
+    public void setMinRelaySatPerB(long minRelaySatPerB) {
+      this.minRelaySatPerB = minRelaySatPerB;
     }
 
-    public long getSurgeRelayFee() {
-      return surgeRelayFee;
+    public long getWeightTx() {
+      return weightTx;
     }
 
-    public void setSurgeRelayFee(long surgeRelayFee) {
-      this.surgeRelayFee = surgeRelayFee;
+    public void setWeightTx(long weightTx) {
+      this.weightTx = weightTx;
+    }
+
+    public long getWeightPerSurge() {
+      return weightPerSurge;
+    }
+
+    public void setWeightPerSurge(long weightPerSurge) {
+      this.weightPerSurge = weightPerSurge;
     }
 
     @Override
@@ -718,10 +732,59 @@ public class WhirlpoolServerConfig extends ServerConfig {
           + minerFeeCap
           + ", max="
           + minerFeeMax
-          + "], minRelayFee="
-          + minRelayFee
-          + ", surgeRelayFee="
-          + surgeRelayFee;
+          + "], minRelaySatPerB="
+          + minRelaySatPerB
+          + ", weightTx="
+          + weightTx
+          + ", weightPerSurge="
+          + weightPerSurge;
+    }
+  }
+
+  public static class MinerFeePerBConfig {
+    private int min;
+    private int max;
+    private int fallback;
+
+    public void validate() throws Exception {
+      if (min <= 0) {
+        throw new Exception("Invalid MinerFeePerBConfig.min");
+      }
+      if (max <= 0) {
+        throw new Exception("Invalid MinerFeePerBConfig.max");
+      }
+      if (fallback <= 0) {
+        throw new Exception("Invalid MinerFeePerBConfig.fallback");
+      }
+    }
+
+    public int getMin() {
+      return min;
+    }
+
+    public void setMin(int min) {
+      this.min = min;
+    }
+
+    public int getMax() {
+      return max;
+    }
+
+    public void setMax(int max) {
+      this.max = max;
+    }
+
+    public int getFallback() {
+      return fallback;
+    }
+
+    public void setFallback(int fallback) {
+      this.fallback = fallback;
+    }
+
+    @Override
+    public String toString() {
+      return "[" + min + "-" + max + "], fallback=" + fallback;
     }
   }
 
@@ -821,6 +884,7 @@ public class WhirlpoolServerConfig extends ServerConfig {
     super.validate();
     samouraiFees.validate();
     minerFees.validate();
+    feePerB.validate();
     for (PartnerConfig partnerConfig : partners) {
       partnerConfig.validate();
     }
@@ -829,12 +893,24 @@ public class WhirlpoolServerConfig extends ServerConfig {
   @Override
   public Map<String, String> getConfigInfo() {
     Map<String, String> configInfo = super.getConfigInfo();
+    configInfo.put(
+        "coordinator",
+        "coordinatorName="
+            + coordinatorName
+            + ", externalUrlClear="
+            + externalUrlClear
+            + ", externalUrlOnion="
+            + externalUrlOnion
+            + ", samouraiNetwork="
+            + samouraiNetwork);
     configInfo.put("testMode", String.valueOf(testMode));
     configInfo.put("failMode", String.valueOf(failMode));
     configInfo.put(
+        "metrics", "metricsUrlApp=" + metricsUrlApp + ", metricsUrlSystem=" + metricsUrlSystem);
+    configInfo.put("monitoringHookUrl", monitoringHookUrl);
+    configInfo.put(
         "rpcClient",
         rpcClient.getHost() + ":" + rpcClient.getPort() + "," + networkParameters.getId());
-    configInfo.put("protocolVersion", WhirlpoolProtocol.PROTOCOL_VERSION);
 
     int nbSeedWordsV0 = samouraiFees.getSecretWalletV0().getWords().split(" ").length;
     int nbSeedWords = samouraiFees.getSecretWallet().getWords().split(" ").length;
@@ -842,6 +918,7 @@ public class WhirlpoolServerConfig extends ServerConfig {
         "samouraiFees",
         "secretWalletV0=(" + nbSeedWordsV0 + " words), secretWallet=(" + nbSeedWords + " words)");
     configInfo.put("minerFees", minerFees.toString());
+    configInfo.put("feePerB", feePerB.toString());
 
     configInfo.put(
         "registerInput.maxInputsSameHash", String.valueOf(registerInput.maxInputsSameHash));
@@ -853,16 +930,6 @@ public class WhirlpoolServerConfig extends ServerConfig {
             + registerInput.minConfirmationsLiquidity
             + ", mustMix="
             + registerInput.minConfirmationsMustMix);
-    configInfo.put("registerInput.confirmInterval", String.valueOf(registerInput.confirmInterval));
-
-    String timeoutInfo =
-        "registerOutput="
-            + String.valueOf(registerOutput.timeout)
-            + ", signing="
-            + String.valueOf(signing.timeout)
-            + ", revealOutput="
-            + String.valueOf(revealOutput.timeout);
-    configInfo.put("timeouts", timeoutInfo);
     configInfo.put("export.mixs", export.mixs.directory + " -> " + export.mixs.filename);
     configInfo.put(
         "export.activity", export.activity.directory + " -> " + export.activity.filename);
@@ -908,7 +975,7 @@ public class WhirlpoolServerConfig extends ServerConfig {
     // fail mode?
     if (failMode.equals(value)) {
       throw new NotifiableException(
-          ServerErrorCode.INPUT_REJECTED, "serverConfig.failMode=" + failMode);
+          WhirlpoolErrorCode.INPUT_REJECTED, "serverConfig.failMode=" + failMode);
     }
   }
 }

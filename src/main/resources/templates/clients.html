@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{decorators/dashboard}">
+<head>
+    <title>Clients</title>
+    <meta http-equiv="refresh" content="120" />
+    <link rel="stylesheet" href="/css/smartwizard.css"/>
+    <link rel="stylesheet" href="/css/status.css"/>
+</head>
+<body>
+    <div layout:fragment="main">
+        <h1 class="h2">Clients
+            <svg width="20px" height="20px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid" class="lds-eclipse">
+                <path stroke="none" d="M10 50A40 40 0 0 0 90 50A40 42 0 0 1 10 50" fill="#bd4030">
+                    <animateTransform attributeName="transform" type="rotate" calcMode="linear" values="0 50 51;360 50 51" keyTimes="0;1" dur="1s" begin="0s" repeatCount="indefinite"></animateTransform>
+                </path>
+            </svg>
+        </h1>
+
+        <strong th:text="${nbClientsTotal}"/> clients: <strong th:text="${nbClientsClassic}"/> classic + <strong th:text="${nbClientsSoroban}"/> Soroban.
+
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                <th class="align-middle"><a href="?sort=poolId">PoolId</a></th>
+                    <th class="align-middle"><a href="?sort=mixId">MixId</a></th>
+                    <th class="align-middle"><a href="?sort=status">Status</a></th>
+                    <th class="align-middle"><a href="?sort=typeStr">Canal</a></th>
+                    <th class="align-middle"><a href="?sort=utxoStr">Utxo</a></th>
+                    <th class="align-middle"><a href="?sort=utxoValue">Amount</a></th>
+                    <th class="align-middle"><a href="?sort=liquidity">Liquidity</a></th>
+                    <th class="align-middle"><a href="?sort=since">Since</a></th>
+                    <th class="align-middle"><a href="?sort=lastSeen">Last seen</a></th>
+                    <th class="align-middle"><a href="?sort=userName">Username / userhash</a></th>
+                </thead>
+                <tbody>
+                    <tr th:each="input : ${page.content}">
+                        <td class="align-middle">
+                            <span th:text="${input.poolId}"/>
+                        </td>
+                        <td class="align-middle">
+                            <small th:text="${input.mixId!=null?input.mixId:'-'}"/>
+                        </td>
+                        <td class="align-middle">
+                            <small th:text="${input.status}"/>
+                        </td>
+                        <td class="align-middle">
+                            <span th:text="${input.typeStr}"/>
+                        </td>
+                        <td class="align-middle">
+                            <small th:text="${input.utxoStr}"/>
+                        </td>
+                        <td class="align-middle">
+                            <small th:text="${@templateUtil.satoshisToBtc(input.utxoValue)}"/>
+                        </td>
+                        <td class="align-middle">
+                            <span th:text="${input.liquidity?'LIQUIDITY':'MUSTMIX'}"/>
+                        </td>
+                        <td class="align-middle">
+                            <span th:text="${@templateUtil.durationFromNow(input.since)}"/>
+                        </td>
+                        <td class="align-middle">
+                            <span th:text="${input.lastSeen!=null ? @templateUtil.durationFromNow(input.lastSeen) : '-'}"/>
+                        </td>
+                        <td class="align-middle">
+                            <small th:text="${input.userName}"/><br/>
+                            <small th:text="${input.lastUserHash!=null?input.lastUserHash:'-'}"/>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <nav>
+            <ul class="pagination">
+                <li class="page-item" th:if="${page.hasPrevious()}">
+                    <a class="page-link" th:href="@{${ENDPOINT}(page=${page.number-1},size=${page.size})}">
+                        <span>&laquo;</span>
+                    </a>
+                </li>
+                <th:block th:each="i: ${#numbers.sequence(0, page.totalPages - 1)}">
+                    <li th:class="${'page-item' + (page.number == i?' active':'')}">
+                        <a class="page-link" th:href="@{${ENDPOINT}(page=${i},size=${page.size})}">[[${i}+1]]</a>
+                    </li>
+                </th:block>
+                <li class="page-item" th:if="${page.hasNext()}">
+                    <a class="page-link" th:href="@{${ENDPOINT}(page=${page.number+1},size=${page.size})}">
+                        <span>&raquo;</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</body>
+</html>

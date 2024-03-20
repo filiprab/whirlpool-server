@@ -1,9 +1,9 @@
 package com.samourai.whirlpool.server.services;
 
-import com.samourai.whirlpool.protocol.websocket.notifications.MixStatus;
-import com.samourai.whirlpool.server.beans.BlameReason;
+import com.samourai.whirlpool.protocol.soroban.payload.beans.BlameReason;
 import com.samourai.whirlpool.server.beans.Mix;
 import com.samourai.whirlpool.server.beans.MixStats;
+import com.samourai.whirlpool.server.beans.MixStatus;
 import com.samourai.whirlpool.server.persistence.repositories.*;
 import com.samourai.whirlpool.server.persistence.to.*;
 import java.lang.invoke.MethodHandles;
@@ -106,8 +106,8 @@ public class DbService {
 
   // blame
 
-  public BlameTO saveBlame(String identifier, BlameReason reason, String mixId, String ip) {
-    BlameTO blameTO = new BlameTO(identifier, reason, mixId, ip);
+  public BlameTO saveBlame(String identifier, BlameReason reason, String mixId, Boolean tor) {
+    BlameTO blameTO = new BlameTO(identifier, reason, mixId, tor);
     log.warn("+blame: " + blameTO);
     return blameRepository.save(blameTO);
   }

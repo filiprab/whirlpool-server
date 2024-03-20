@@ -2,10 +2,10 @@ package com.samourai.whirlpool.server.services;
 
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
-import com.samourai.whirlpool.protocol.websocket.notifications.MixStatus;
-import com.samourai.whirlpool.server.beans.ConfirmedInput;
+import com.samourai.whirlpool.client.utils.ClientUtils;
 import com.samourai.whirlpool.server.beans.FailReason;
 import com.samourai.whirlpool.server.beans.Mix;
+import com.samourai.whirlpool.server.beans.MixStatus;
 import com.samourai.whirlpool.server.beans.RegisteredInput;
 import com.samourai.whirlpool.server.beans.rpc.TxOutPoint;
 import com.samourai.whirlpool.server.exceptions.QueueInputException;
@@ -31,8 +31,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
     long minerFeeMin = 100;
     long minerFeeCap = 9500;
     long minerFeeMax = 10000;
-    long minRelayFee = 510;
-    long surgeRelayFee = 100;
+    long minRelaySatPerB = 1;
     int mustMixMin = 1;
     int liquidityMin = 0;
     int anonymitySet = 2;
@@ -43,8 +42,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
             minerFeeMin,
             minerFeeCap,
             minerFeeMax,
-            minRelayFee,
-            surgeRelayFee,
+            minRelaySatPerB,
             mustMixMin,
             liquidityMin,
             anonymitySet,
@@ -65,15 +63,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(true, false, mix);
 
     // 1 mustMix, minerFee not reached => accept mustMix
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "mustMix1",
             false,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix1", "".getBytes(), "userHash1");
+            false,
+            "userHash1",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(mix.hasMinMustMixAndFeeReached());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(1, mix.getNbInputsMustMix());
@@ -85,15 +84,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(true, false, mix);
 
     // 2 mustMix, minerFee reached => ready
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "mustMix2",
             false,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix2", "".getBytes(), "userHash2");
+            false,
+            "userHash2",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(mix.hasMinMustMixAndFeeReached());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
@@ -113,8 +113,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
     long minerFeeMin = 100;
     long minerFeeCap = 9500;
     long minerFeeMax = 10000;
-    long minRelayFee = 510;
-    long surgeRelayFee = 100;
+    long minRelaySatPerB = 1;
     int mustMixMin = 1;
     int liquidityMin = 1;
     int anonymitySet = 4;
@@ -125,8 +124,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
             minerFeeMin,
             minerFeeCap,
             minerFeeMax,
-            minRelayFee,
-            surgeRelayFee,
+            minRelaySatPerB,
             mustMixMin,
             liquidityMin,
             anonymitySet,
@@ -148,15 +146,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(true, true, mix);
 
     // 1 liquidity, minMustMix not reached => accept mustMix
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity1",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity1", "".getBytes(), "liquidity1");
+            false,
+            "userHashL1",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(mix.hasMinMustMixAndFeeReached());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(0, mix.getNbInputsMustMix());
@@ -168,15 +167,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(true, false, mix);
 
     // 1 liquidity + 1 mustMix, minMustMix reached but minerFeeMix not reached => accept mustMix
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "mustMix1",
             false,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix1", "".getBytes(), "mustMix1");
+            false,
+            "userHashM1",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(mix.hasMinMustMixAndFeeReached());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(1, mix.getNbInputsMustMix());
@@ -189,15 +189,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
 
     // 1 liquidity + 2 mustMix, minMustMix reached + minerFeeMix reached => accept mustMix and
     // liquidity
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
-            "mustMix2",
-            false,
+            "liquidity1",
+            true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix2", "".getBytes(), "mustMix2");
+            false,
+            "userHashL1",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(mix.hasMinMustMixAndFeeReached());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
@@ -209,15 +210,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(true, true, mix);
 
     // 2 liquidity + 2 mustMix => ready
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity2",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity2", "".getBytes(), "liquidity2");
+            false,
+            "userHashL2",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(mix.hasMinMustMixAndFeeReached());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
@@ -236,8 +238,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
     long minerFeeMin = 100;
     long minerFeeCap = 9500;
     long minerFeeMax = 10000;
-    long minRelayFee = 510;
-    long surgeRelayFee = 100;
+    long minRelaySatPerB = 1;
     int mustMixMin = 2;
     int liquidityMin = 1;
     int anonymitySet = 5;
@@ -249,26 +250,24 @@ public class MixServiceTest extends AbstractIntegrationTest {
             minerFeeMin,
             minerFeeCap,
             minerFeeMax,
-            minRelayFee,
-            surgeRelayFee,
+            minRelaySatPerB,
             mustMixMin,
             liquidityMin,
             anonymitySet,
             surge);
-    String mixId = mix.getMixId();
-
     long mustMixValue = 200000555; // high minerFee to pay surges
 
     // 1 mustMix, minMustMix reached but minerFeeMix not reached => accept mustMix & liquidities
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "mustMix1",
             false,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix1", "".getBytes(), "mustMix1");
+            false,
+            "userHashM1",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(1, mix.getNbInputsMustMix());
     Assertions.assertEquals(0, mix.getNbInputsLiquidities());
@@ -279,15 +278,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(true, true, mix);
 
     // 2 mustMix, minerFeeMix reached => accept liquidity & surges
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "mustMix2",
             false,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix2", "".getBytes(), "mustMix2");
+            false,
+            "userHashM2",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(0, mix.getNbInputsLiquidities());
@@ -298,15 +298,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 1 liquidity => accept liquidity & surges
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity1",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity1", "".getBytes(), "liquidity1");
+            false,
+            "userHashL1",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(1, mix.getNbInputsLiquidities());
@@ -317,15 +318,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 2 liquidities => accept liquidity & surges
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity2",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity2", "".getBytes(), "liquidity2");
+            false,
+            "userHashL2",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(2, mix.getNbInputsLiquidities());
@@ -336,15 +338,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 3 liquidities => accept surges & ready
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity3",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity3", "".getBytes(), "liquidity3");
+            false,
+            "userHashL3",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(3, mix.getNbInputsLiquidities());
@@ -355,15 +358,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 4 liquidities => accept surges & ready
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity4",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity4", "".getBytes(), "liquidity4");
+            false,
+            "userHashL4",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(4, mix.getNbInputsLiquidities());
@@ -374,15 +378,185 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 5 liquidities => full
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity5",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity5", "".getBytes(), "liquidity5");
+            false,
+            "userHashL5",
+            null),
+        ClientUtils.generateBordereau());
+    Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
+    Assertions.assertEquals(2, mix.getNbInputsMustMix());
+    Assertions.assertEquals(5, mix.getNbInputsLiquidities());
+    Assertions.assertEquals(2, mix.getSurge());
+    Assertions.assertEquals(0, mix.getAvailableSlotsMustMix());
+    Assertions.assertEquals(0, mix.getAvailableSlotsLiquidityAndSurge());
+    Assertions.assertTrue(mix.isAnonymitySetReached());
+    checkAccepts(false, false, mix);
+  }
+
+  @Test
+  public void isConfirmInputReady_withSurgeLiquidityMinNotReached() throws Exception {
+    MixService spyMixService = Mockito.spy(mixService);
+    long denomination = 200000000;
+    long feeValue = 10000000;
+    long minerFeeMin = 100;
+    long minerFeeCap = 9500;
+    long minerFeeMax = 10000;
+    long minRelaySatPerB = 1;
+    int mustMixMin = 2;
+    int liquidityMin = 1;
+    int anonymitySet = 5;
+    int surge = 2;
+    Mix mix =
+        __nextMix(
+            denomination,
+            feeValue,
+            minerFeeMin,
+            minerFeeCap,
+            minerFeeMax,
+            minRelaySatPerB,
+            mustMixMin,
+            liquidityMin,
+            anonymitySet,
+            surge);
+
+    long mustMixValue = 200000555; // high minerFee to pay surges
+
+    // 1 mustMix, minMustMix reached but minerFeeMix not reached => accept mustMix & liquidities
+    mix.registerInput(
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "mustMix1",
+            false,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHashM1",
+            null),
+        ClientUtils.generateBordereau());
+    Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
+    Assertions.assertEquals(1, mix.getNbInputsMustMix());
+    Assertions.assertEquals(0, mix.getNbInputsLiquidities());
+    Assertions.assertEquals(0, mix.getSurge());
+    Assertions.assertEquals(3, mix.getAvailableSlotsMustMix());
+    Assertions.assertEquals(1, mix.getAvailableSlotsLiquidityAndSurge());
+    Assertions.assertFalse(mix.isAnonymitySetReached());
+    checkAccepts(true, true, mix);
+
+    // 2 mustMix, minerFeeMix reached => accept liquidity & surges
+    mix.registerInput(
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "mustMix2",
+            false,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHashM2",
+            null),
+        ClientUtils.generateBordereau());
+    Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
+    Assertions.assertEquals(2, mix.getNbInputsMustMix());
+    Assertions.assertEquals(0, mix.getNbInputsLiquidities());
+    Assertions.assertEquals(2, mix.getSurge());
+    Assertions.assertEquals(0, mix.getAvailableSlotsMustMix());
+    Assertions.assertEquals(5, mix.getAvailableSlotsLiquidityAndSurge());
+    Assertions.assertFalse(mix.isAnonymitySetReached());
+    checkAccepts(false, true, mix);
+
+    // 2 mustMix + 1 liquidity => accept liquidity & surges
+    mix.registerInput(
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "liquidity1",
+            true,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHashL1",
+            null),
+        ClientUtils.generateBordereau());
+    Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
+    Assertions.assertEquals(2, mix.getNbInputsMustMix());
+    Assertions.assertEquals(1, mix.getNbInputsLiquidities());
+    Assertions.assertEquals(2, mix.getSurge());
+    Assertions.assertEquals(0, mix.getAvailableSlotsMustMix());
+    Assertions.assertEquals(4, mix.getAvailableSlotsLiquidityAndSurge());
+    Assertions.assertFalse(mix.isAnonymitySetReached());
+    checkAccepts(false, true, mix);
+
+    // 2 mustMix + 2 liquidities => accept liquidity & surges
+    mix.registerInput(
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "liquidity2",
+            true,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHashL2",
+            null),
+        ClientUtils.generateBordereau());
+    Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
+    Assertions.assertEquals(2, mix.getNbInputsMustMix());
+    Assertions.assertEquals(2, mix.getNbInputsLiquidities());
+    Assertions.assertEquals(2, mix.getSurge());
+    Assertions.assertEquals(0, mix.getAvailableSlotsMustMix());
+    Assertions.assertEquals(3, mix.getAvailableSlotsLiquidityAndSurge());
+    Assertions.assertFalse(mix.isAnonymitySetReached());
+    checkAccepts(false, true, mix);
+
+    // 2 mustMix + 3 liquidities => accept surges & ready
+    mix.registerInput(
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "liquidity3",
+            true,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHashL3",
+            null),
+        ClientUtils.generateBordereau());
+    Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
+    Assertions.assertEquals(2, mix.getNbInputsMustMix());
+    Assertions.assertEquals(3, mix.getNbInputsLiquidities());
+    Assertions.assertEquals(2, mix.getSurge());
+    Assertions.assertEquals(0, mix.getAvailableSlotsMustMix());
+    Assertions.assertEquals(2, mix.getAvailableSlotsLiquidityAndSurge());
+    Assertions.assertTrue(mix.isAnonymitySetReached());
+    checkAccepts(false, true, mix);
+
+    // 2 mustMix + 4 liquidities => accept surges & ready
+    mix.registerInput(
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "liquidity4",
+            true,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHashL4",
+            null),
+        ClientUtils.generateBordereau());
+    Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
+    Assertions.assertEquals(2, mix.getNbInputsMustMix());
+    Assertions.assertEquals(4, mix.getNbInputsLiquidities());
+    Assertions.assertEquals(2, mix.getSurge());
+    Assertions.assertEquals(0, mix.getAvailableSlotsMustMix());
+    Assertions.assertEquals(1, mix.getAvailableSlotsLiquidityAndSurge());
+    Assertions.assertTrue(mix.isAnonymitySetReached());
+    checkAccepts(false, true, mix);
+
+    // 2 mustMix + 5 liquidities => full
+    mix.registerInput(
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "liquidity5",
+            true,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHashL5",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(5, mix.getNbInputsLiquidities());
@@ -401,8 +575,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
     long minerFeeMin = 100;
     long minerFeeCap = 9500;
     long minerFeeMax = 10000;
-    long minRelayFee = 510;
-    long surgeRelayFee = 100;
+    long minRelaySatPerB = 1;
     int mustMixMin = 2;
     int liquidityMin = 1;
     int anonymitySet = 5;
@@ -414,26 +587,25 @@ public class MixServiceTest extends AbstractIntegrationTest {
             minerFeeMin,
             minerFeeCap,
             minerFeeMax,
-            minRelayFee,
-            surgeRelayFee,
+            minRelaySatPerB,
             mustMixMin,
             liquidityMin,
             anonymitySet,
             surge);
-    String mixId = mix.getMixId();
 
     long mustMixValue = 200000555; // high minerFee to pay surges
 
     // 1 mustMix, minMustMix reached but minerFeeMix not reached => accept mustMix & liquidities
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "mustMix1",
             false,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix1", "".getBytes(), "mustMix1");
+            false,
+            "mustMix1",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(1, mix.getNbInputsMustMix());
     Assertions.assertEquals(0, mix.getNbInputsLiquidities());
@@ -446,15 +618,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     //////////////////////////////////////// >
 
     // 2 mustMix, minerFeeMix reached => accept liquidity & surges
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "mustMix2",
             false,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix2", "".getBytes(), "mustMix2");
+            false,
+            "mustMix2",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(0, mix.getNbInputsLiquidities());
@@ -465,15 +638,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 1 liquidity => accept liquidity & surges
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity1",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity1", "".getBytes(), "liquidity1");
+            false,
+            "liquidity1",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(1, mix.getNbInputsLiquidities());
@@ -484,15 +658,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 2 liquidities => accept liquidity & surges
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity2",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity2", "".getBytes(), "liquidity2");
+            false,
+            "liquidity2",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(2, mix.getNbInputsLiquidities());
@@ -503,15 +678,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 3 liquidities => accept surges & ready
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity3",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity3", "".getBytes(), "liquidity3");
+            false,
+            "liquidity3",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(3, mix.getNbInputsLiquidities());
@@ -522,15 +698,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 4 liquidities => accept surges & ready
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity4",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity4", "".getBytes(), "liquidity4");
+            false,
+            "liquidity4",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(4, mix.getNbInputsLiquidities());
@@ -557,15 +734,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     //////////////////////////////////////// >
 
     // 2 mustMix + 1 liquidity, minerFeeMix reached => accept liquidity & surges
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "mustMix2",
             false,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "mustMix2", "".getBytes(), "mustMix2");
+            false,
+            "mustMix2",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(1, mix.getNbInputsLiquidities());
@@ -576,15 +754,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 2 liquidities => accept liquidity & surges
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity11",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity11", "".getBytes(), "liquidity11");
+            false,
+            "liquidity11",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(2, mix.getNbInputsLiquidities());
@@ -595,15 +774,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 3 liquidities => accept & surges & ready
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity22",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity22", "".getBytes(), "liquidity22");
+            false,
+            "liquidity22",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(3, mix.getNbInputsLiquidities());
@@ -614,15 +794,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 4 liquidities => accept surges & ready
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity33",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity33", "".getBytes(), "liquidity33");
+            false,
+            "liquidity33",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(4, mix.getNbInputsLiquidities());
@@ -633,15 +814,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(false, true, mix);
 
     // 2 mustMix + 5 liquidities => full
-    mix.registerConfirmingInput(
+    mix.registerInput(
         new RegisteredInput(
             mix.getPool().getPoolId(),
             "liquidity44",
             true,
             generateOutPoint(mustMixValue),
-            "127.0.0.1",
-            null));
-    mixService.confirmInput(mixId, "liquidity44", "".getBytes(), "liquidity44");
+            false,
+            "liquidity44",
+            null),
+        ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputsMustMix());
     Assertions.assertEquals(5, mix.getNbInputsLiquidities());
@@ -662,8 +844,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
     long minerFeeMin = 100;
     long minerFeeCap = 9500;
     long minerFeeMax = 10000;
-    long minRelayFee = 510;
-    long surgeRelayFee = 100;
+    long minRelaySatPerB = 1;
     int mustMixMin = 1;
     int liquidityMin = 0;
     int anonymitySet = 2;
@@ -674,8 +855,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
             minerFeeMin,
             minerFeeCap,
             minerFeeMax,
-            minRelayFee,
-            surgeRelayFee,
+            minRelaySatPerB,
             mustMixMin,
             liquidityMin,
             anonymitySet,
@@ -688,41 +868,39 @@ public class MixServiceTest extends AbstractIntegrationTest {
     checkAccepts(true, false, mix);
 
     // 1 mustMix => accept mustMix + liquidity
-    ConfirmedInput mustMix1 =
-        new ConfirmedInput(
-            new RegisteredInput(
-                mix.getPool().getPoolId(),
-                "mustMix1",
-                false,
-                generateOutPoint(mustMixValue),
-                "127.0.0.1",
-                null),
-            "userHash1");
-    mix.registerInput(mustMix1);
+    RegisteredInput mustMix1 =
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "mustMix1",
+            false,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHash1",
+            null);
+    mix.registerInput(mustMix1, ClientUtils.generateBordereau());
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix));
     checkAccepts(true, true, mix);
 
     // 2 mustMix => ready
-    ConfirmedInput mustMix2 =
-        new ConfirmedInput(
-            new RegisteredInput(
-                mix.getPool().getPoolId(),
-                "mustMix2",
-                false,
-                generateOutPoint(mustMixValue),
-                "127.0.0.1",
-                null),
-            "userHash2");
-    mix.registerInput(mustMix2);
+    RegisteredInput mustMix2 =
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "mustMix2",
+            false,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHash2",
+            null);
+    mix.registerInput(mustMix2, ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputs());
     checkAccepts(false, false, mix);
 
-    String blameIdentifierMustMix1 = Utils.computeBlameIdentitifer(mustMix1.getRegisteredInput());
+    String blameIdentifierMustMix1 = Utils.computeBlameIdentitifer(mustMix1);
     Assertions.assertTrue(dbService.findBlames(blameIdentifierMustMix1).isEmpty()); // no blame
 
     // mustMix spent in meantime => false
-    TxOutPoint out1 = mustMix1.getRegisteredInput().getOutPoint();
+    TxOutPoint out1 = mustMix1.getOutPoint();
     rpcClientService.mockSpentOutput(out1.getHash(), out1.getIndex());
 
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix)); // mix not valid anymore
@@ -732,17 +910,16 @@ public class MixServiceTest extends AbstractIntegrationTest {
     Assertions.assertEquals(dbService.findBlames(blameIdentifierMustMix1).size(), 0);
 
     // 2 mustMix => true
-    ConfirmedInput mustMix3 =
-        new ConfirmedInput(
-            new RegisteredInput(
-                mix.getPool().getPoolId(),
-                "mustMix3",
-                false,
-                generateOutPoint(mustMixValue),
-                "127.0.0.1",
-                null),
-            "userHash3");
-    mix.registerInput(mustMix3);
+    RegisteredInput mustMix3 =
+        new RegisteredInput(
+            mix.getPool().getPoolId(),
+            "mustMix3",
+            false,
+            generateOutPoint(mustMixValue),
+            false,
+            "userHash3",
+            null);
+    mix.registerInput(mustMix3, ClientUtils.generateBordereau());
     Assertions.assertTrue(spyMixService.isConfirmInputReady(mix));
     Assertions.assertEquals(2, mix.getNbInputs());
 
@@ -750,7 +927,7 @@ public class MixServiceTest extends AbstractIntegrationTest {
     mix.setMixStatusAndTime(MixStatus.REGISTER_OUTPUT);
 
     // mustMix spent in meantime => false
-    TxOutPoint out3 = mustMix3.getRegisteredInput().getOutPoint();
+    TxOutPoint out3 = mustMix3.getOutPoint();
     rpcClientService.mockSpentOutput(out3.getHash(), out3.getIndex());
 
     Assertions.assertFalse(spyMixService.isConfirmInputReady(mix)); // mix not valid + trigger fail
@@ -761,20 +938,8 @@ public class MixServiceTest extends AbstractIntegrationTest {
     Assertions.assertEquals(out3.getHash() + ":" + out3.getIndex(), mix.getFailInfo());
 
     // blame as mix was already started
-    String blameIdentifierMustMix3 = Utils.computeBlameIdentitifer(mustMix3.getRegisteredInput());
+    String blameIdentifierMustMix3 = Utils.computeBlameIdentitifer(mustMix3);
     Assertions.assertEquals(dbService.findBlames(blameIdentifierMustMix3).size(), 1);
-  }
-
-  private TxOutPoint generateOutPoint(long value) {
-    TxOutPoint txOutPoint =
-        new TxOutPoint(
-            Utils.getRandomString(65),
-            0,
-            value,
-            99,
-            null,
-            testUtils.generateSegwitAddress().getBech32AsString());
-    return txOutPoint;
   }
 
   private void checkAccepts(boolean mustMix, boolean liquidity, Mix mix) {
@@ -786,7 +951,8 @@ public class MixServiceTest extends AbstractIntegrationTest {
               "username" + Utils.getRandomString(10),
               false,
               generateOutPoint(mix.getPool().computePremixBalanceMax(false)),
-              "127.0.0.1",
+              false,
+              null,
               null);
       mix.hasAvailableSlotFor(input);
       if (!mustMix) {
@@ -812,7 +978,8 @@ public class MixServiceTest extends AbstractIntegrationTest {
               "username" + Utils.getRandomString(10),
               true,
               generateOutPoint(mix.getPool().computePremixBalanceMin(true)),
-              "127.0.0.1",
+              false,
+              null,
               null);
       mix.hasAvailableSlotFor(input);
       if (!liquidity) {

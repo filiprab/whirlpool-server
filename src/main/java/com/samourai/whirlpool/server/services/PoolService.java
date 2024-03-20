@@ -2,23 +2,20 @@ package com.samourai.whirlpool.server.services;
 
 import com.google.common.collect.ImmutableMap;
 import com.samourai.javaserver.exceptions.NotifiableException;
-import com.samourai.whirlpool.protocol.websocket.messages.SubscribePoolResponse;
+import com.samourai.whirlpool.protocol.WhirlpoolErrorCode;
+import com.samourai.whirlpool.protocol.soroban.WhirlpoolApiCoordinator;
+import com.samourai.whirlpool.protocol.soroban.payload.coordinators.PoolInfo;
 import com.samourai.whirlpool.server.beans.*;
 import com.samourai.whirlpool.server.beans.export.ActivityCsv;
-import com.samourai.whirlpool.server.beans.rpc.TxOutPoint;
 import com.samourai.whirlpool.server.config.WhirlpoolServerConfig;
 import com.samourai.whirlpool.server.exceptions.IllegalInputException;
-import com.samourai.whirlpool.server.exceptions.ServerErrorCode;
 import java.lang.invoke.MethodHandles;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 
@@ -27,67 +24,49 @@ public class PoolService {
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private WhirlpoolServerConfig whirlpoolServerConfig;
-  private CryptoService cryptoService;
-  private WSMessageService WSMessageService;
   private ExportService exportService;
   private MetricService metricService;
-  private TaskService taskService;
+  private WhirlpoolApiCoordinator whirlpoolApiCoordinator;
   private Map<String, Pool> pools;
 
   @Autowired
   public PoolService(
       WhirlpoolServerConfig whirlpoolServerConfig,
-      CryptoService cryptoService,
-      WSMessageService WSMessageService,
       ExportService exportService,
       MetricService metricService,
       WSSessionService wsSessionService,
-      TaskService taskService,
-      TaskScheduler taskScheduler) {
+      WhirlpoolApiCoordinator whirlpoolApiCoordinator) {
     this.whirlpoolServerConfig = whirlpoolServerConfig;
-    this.cryptoService = cryptoService;
-    this.WSMessageService = WSMessageService;
     this.exportService = exportService;
     this.metricService = metricService;
-    this.taskService = taskService;
+    this.whirlpoolApiCoordinator = whirlpoolApiCoordinator;
     __reset();
 
     // listen websocket onDisconnect
     wsSessionService.addOnDisconnectListener(username -> onClientDisconnect(username));
-
-    if (MetricService.MOCK) {
-      taskScheduler.scheduleAtFixedRate(
-          () -> {
-            metricService.mockPools(getPools());
-          },
-          4000);
-    }
   }
 
   public void __reset() {
     WhirlpoolServerConfig.PoolConfig[] poolConfigs = whirlpoolServerConfig.getPools();
-    WhirlpoolServerConfig.MinerFeeConfig globalMinerFeeConfig =
+    WhirlpoolServerConfig.PoolMinerFeeConfig globalMinerFeeConfig =
         whirlpoolServerConfig.getMinerFees();
     __reset(poolConfigs, globalMinerFeeConfig);
   }
 
   public void __reset(
       WhirlpoolServerConfig.PoolConfig[] poolConfigs,
-      WhirlpoolServerConfig.MinerFeeConfig globalMinerFeeConfig) {
+      WhirlpoolServerConfig.PoolMinerFeeConfig globalMinerFeeConfig) {
     pools = new ConcurrentHashMap<>();
     for (WhirlpoolServerConfig.PoolConfig poolConfig : poolConfigs) {
-      PoolMinerFee minerFee =
-          new PoolMinerFee(
-              globalMinerFeeConfig, poolConfig.getMinerFees(), poolConfig.getMustMixMin());
+      PoolMinerFee minerFee = new PoolMinerFee(globalMinerFeeConfig, poolConfig.getMinerFees());
       __reset(poolConfig, minerFee);
     }
   }
 
-  public void __reset(WhirlpoolServerConfig.PoolConfig poolConfig, PoolMinerFee minerFee) {
+  public Pool __reset(WhirlpoolServerConfig.PoolConfig poolConfig, PoolMinerFee minerFee) {
     String poolId = poolConfig.getId();
 
     Assert.notNull(poolId, "Pool configuration: poolId must not be NULL");
-    Assert.isTrue(!pools.containsKey(poolId), "Pool configuration: poolId must not be duplicate");
     PoolFee poolFee = new PoolFee(poolConfig.getFeeValue(), poolConfig.getFeeAccept());
     Pool pool =
         new Pool(
@@ -97,15 +76,34 @@ public class PoolService {
             poolConfig.getMustMixMin(),
             poolConfig.getLiquidityMin(),
             poolConfig.getSurge(),
+            poolConfig.getMinLiquidityPoolForSurge(),
             poolConfig.getAnonymitySet(),
             poolConfig.getTx0MaxOutputs(),
-            minerFee);
+            minerFee,
+            whirlpoolApiCoordinator);
     pools.put(poolId, pool);
     metricService.manage(pool);
+    return pool;
   }
 
   public Collection<Pool> getPools() {
     return pools.values();
+  }
+
+  public Collection<PoolInfo> computePoolInfosSoroban(long feePerB) {
+    return getPools().parallelStream()
+        .map(
+            pool ->
+                new PoolInfo(
+                    pool.getPoolId(),
+                    pool.getDenomination(),
+                    pool.getPoolFee().getFeeValue(),
+                    pool.computePremixValue(feePerB),
+                    pool.computeMustMixBalanceMin(),
+                    pool.computeMustMixBalanceCap(), // provide virtual cap as max
+                    pool.getTx0MaxOutputs(),
+                    pool.getAnonymitySet()))
+        .collect(Collectors.toList());
   }
 
   public Optional<Pool> findByInputValue(long inputValue, boolean liquidity) {
@@ -120,119 +118,47 @@ public class PoolService {
   public Pool getPool(String poolId) throws IllegalInputException {
     Pool pool = pools.get(poolId);
     if (pool == null) {
-      throw new IllegalInputException(ServerErrorCode.INVALID_ARGUMENT, "Pool not found");
+      throw new IllegalInputException(WhirlpoolErrorCode.INVALID_ARGUMENT, "Pool not found");
     }
     return pool;
   }
 
-  public SubscribePoolResponse computeSubscribePoolResponse(String poolId)
-      throws IllegalInputException {
-    Pool pool = getPool(poolId);
-    SubscribePoolResponse poolStatusNotification =
-        new SubscribePoolResponse(
-            cryptoService.getNetworkParameters().getPaymentProtocolId(),
-            pool.getDenomination(),
-            pool.computeMustMixBalanceMin(),
-            pool.computeMustMixBalanceCap(),
-            pool.computeMustMixBalanceMax());
-    return poolStatusNotification;
-  }
-
-  public synchronized RegisteredInput registerInput(
-      String poolId,
-      String username,
-      boolean liquidity,
-      TxOutPoint txOutPoint,
-      String ip,
-      String lastUserHash)
+  public void registerInput(RegisteredInput registeredInput, Map<String, String> clientDetails)
       throws NotifiableException {
-    Pool pool = getPool(poolId);
-
-    // verify balance
-    long inputBalance = txOutPoint.getValue();
-    if (!pool.checkInputBalance(inputBalance, liquidity)) {
-      long balanceMin = pool.computePremixBalanceMin(liquidity);
-      long balanceMax = pool.computePremixBalanceMax(liquidity);
-      throw new IllegalInputException(
-          ServerErrorCode.INPUT_REJECTED,
-          "Invalid input balance (expected: "
-              + balanceMin
-              + "-"
-              + balanceMax
-              + ", actual:"
-              + txOutPoint.getValue()
-              + ")");
+    // queue input
+    getPoolQueue(registeredInput).register(registeredInput);
+    if (log.isDebugEnabled()) {
+      log.debug("+INPUT_QUEUE_CLASSIC " + registeredInput.getPoolId() + " " + registeredInput);
     }
 
-    RegisteredInput registeredInput =
-        new RegisteredInput(poolId, username, liquidity, txOutPoint, ip, lastUserHash);
-
-    // verify confirmations
-    if (!isUtxoConfirmed(txOutPoint, liquidity)) {
-      throw new IllegalInputException(ServerErrorCode.INPUT_REJECTED, "Input is not confirmed");
+    // log activity
+    if (clientDetails == null) {
+      clientDetails = new LinkedHashMap<>();
     }
-    queueToPool(pool, registeredInput);
-    return registeredInput;
+    clientDetails.put("soroban", registeredInput.isSoroban() ? "true" : "false");
+    ActivityCsv activityCsv =
+        new ActivityCsv(
+            "REGISTER_INPUT", registeredInput.getPoolId(), registeredInput, null, clientDetails);
+    exportService.exportActivity(activityCsv);
   }
 
-  private void queueToPool(Pool pool, RegisteredInput registeredInput) throws NotifiableException {
-    InputPool queue;
-    if (registeredInput.isLiquidity()) {
+  private InputPool getPoolQueue(RegisteredInput registeredInput) throws NotifiableException {
+    return getPoolQueue(registeredInput.getPoolId(), registeredInput.isLiquidity());
+  }
+
+  public InputPool getPoolQueue(String poolId, boolean liquidity) throws NotifiableException {
+    Pool pool = getPool(poolId);
+    if (liquidity) {
       // liquidity
-      queue = pool.getLiquidityQueue();
-    } else {
-      // mustMix
-      queue = pool.getMustMixQueue();
+      return pool.getLiquidityQueue();
     }
-
-    if (log.isDebugEnabled()) {
-      log.debug(
-          "["
-              + pool.getPoolId()
-              + "] "
-              + " queueing "
-              + (registeredInput.isLiquidity() ? "liquidity" : "mustMix")
-              + ", username="
-              + registeredInput.getUsername());
-    }
-
-    // queue input
-    queue.register(registeredInput);
+    // mustMix
+    return pool.getMustMixQueue();
   }
 
   public void resetLastUserHash(Mix mix) {
     mix.getPool().getLiquidityQueue().resetLastUserHash();
     mix.getPool().getMustMixQueue().resetLastUserHash();
-  }
-
-  private boolean isUtxoConfirmed(TxOutPoint txOutPoint, boolean liquidity) {
-    int inputConfirmations = txOutPoint.getConfirmations();
-    if (liquidity) {
-      // liquidity
-      int minConfirmationsMix =
-          whirlpoolServerConfig.getRegisterInput().getMinConfirmationsLiquidity();
-      if (inputConfirmations < minConfirmationsMix) {
-        log.info(
-            "input not confirmed: liquidity needs at least "
-                + minConfirmationsMix
-                + " confirmations: "
-                + txOutPoint.getHash());
-        return false;
-      }
-    } else {
-      // mustMix
-      int minConfirmationsTx0 =
-          whirlpoolServerConfig.getRegisterInput().getMinConfirmationsMustMix();
-      if (inputConfirmations < minConfirmationsTx0) {
-        log.info(
-            "input not confirmed: mustMix needs at least "
-                + minConfirmationsTx0
-                + " confirmations: "
-                + txOutPoint.getHash());
-        return false;
-      }
-    }
-    return true;
   }
 
   private void onClientDisconnect(String username) {
@@ -244,7 +170,7 @@ public class PoolService {
           pool.getLiquidityQueue().removeByUsername(username);
       if (liquidityRemoved.isPresent()) {
         if (log.isDebugEnabled()) {
-          log.debug("[" + pool.getPoolId() + "] " + username + " removed 1 liquidity from pool");
+          log.debug("-INPUT_QUEUE_CLASSIC " + pool.getPoolId() + " " + liquidityRemoved.get());
         }
 
         // log activity
@@ -257,7 +183,7 @@ public class PoolService {
       // remove queued mustMix
       Optional<RegisteredInput> mustMixRemoved = pool.getMustMixQueue().removeByUsername(username);
       if (mustMixRemoved.isPresent()) {
-        log.info("[" + pool.getPoolId() + "] " + username + " removed 1 mustMix from pool");
+        log.info("-INPUT_QUEUE_CLASSIC " + pool.getPoolId() + " " + mustMixRemoved.get());
 
         // log activity
         ActivityCsv activityCsv =
@@ -266,5 +192,20 @@ public class PoolService {
         exportService.exportActivity(activityCsv);
       }
     }
+  }
+
+  public int getNbInputs() {
+    return pools.values().stream()
+        .mapToInt(pool -> pool.getLiquidityQueue().getSize() + pool.getMustMixQueue().getSize())
+        .sum();
+  }
+
+  public int getNbInputsBySoroban(boolean soroban) {
+    return pools.values().stream()
+        .mapToInt(
+            pool ->
+                pool.getLiquidityQueue().getSizeBySoroban(soroban)
+                    + pool.getMustMixQueue().getSizeBySoroban(soroban))
+        .sum();
   }
 }

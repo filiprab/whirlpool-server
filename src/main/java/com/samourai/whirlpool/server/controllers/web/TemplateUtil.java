@@ -1,7 +1,11 @@
 package com.samourai.whirlpool.server.controllers.web;
 
+import com.samourai.wallet.util.Util;
+import com.samourai.whirlpool.server.beans.RegisteredInput;
 import com.samourai.whirlpool.server.utils.Utils;
 import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 // used in thymeleaf templates
@@ -11,27 +15,28 @@ public class TemplateUtil {
     return Utils.satoshisToBtc(sats);
   }
 
-  public String duration(int seconds) {
-    return duration(seconds, true);
+  public String registeredInputsToString(Collection<RegisteredInput> registeredInputs) {
+    String result = registeredInputs.size() + " inputs";
+    if (registeredInputs.size() > 0) {
+      result +=
+          ":\n"
+              + registeredInputs.stream()
+                  .map(
+                      input ->
+                          input.getOutPoint().toKey()
+                              + " "
+                              + input.getTypeStr()
+                              + (input.isQuarantine() ? ": " + input.getQuarantineReason() : ""))
+                  .collect(Collectors.joining("\n"));
+    }
+    return result;
   }
 
-  public String duration(int seconds, boolean withSeconds) {
-    StringBuffer sb = new StringBuffer();
-    if (seconds > 60) {
-      int minutes = (int) Math.floor(seconds / 60);
+  public String durationFromNow(long ms) {
+    return Util.formatDurationFromNow(ms);
+  }
 
-      if (minutes > 60) {
-        int hours = (int) Math.floor(minutes / 60);
-        sb.append(hours + "h");
-        minutes -= hours * 60;
-      }
-
-      sb.append(minutes + "m");
-      seconds -= minutes * 60;
-    }
-    if (withSeconds) {
-      sb.append(seconds + "s");
-    }
-    return sb.toString();
+  public String duration(int ms) {
+    return Util.formatDuration(ms);
   }
 }

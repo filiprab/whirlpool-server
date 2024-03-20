@@ -38,7 +38,6 @@ Optional pool override:
 server.pools[x].miner-fees.miner-fee-min
 server.pools[x].miner-fees.miner-fee-max
 server.pools[x].miner-fees.miner-fee-cap
-server.pools[x].miner-fees.min-relay-fee
 ```
 
 UTXO should be founded with:<br/>
@@ -59,7 +58,6 @@ Standard fee configuration is through *fee-value*.
 ```
 server.register-input.min-confirmations-must-mix: minimum confirmations for mustMix inputs
 server.register-input.min-confirmations-liquidity: minimum confirmations for liquidity inputs
-server.register-input.confirm-interval = 10: inputs are confirmed by batch at this frequency (seconds)
 ```
 
 ### UTXO rules
